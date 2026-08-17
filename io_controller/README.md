@@ -29,9 +29,8 @@ Installed from `server/requirements.txt` by `scripts/pi-setup.sh`
 (`smbus2`, `gpiozero`, `neopixel`); the `pinctrl` system tool is used for the
 direct-GPIO signals.
 
-## Parked code
+## Removed code
 
-Standalone legacy drivers, Tk dashboards, the C++ twin and the hardware
-reference sheets moved to `Not_Relevant/legacy/io_controller/`; bench tools
-built on this driver (`control_dashboard.py`, `fan_control.py`) live in
-`Not_Relevant/development-tools/io_controller/`.
+Standalone legacy drivers, Tk dashboards, the C++ twin, hardware reference
+sheets and the bench tools built on this driver were removed in the 2026-08
+cleanup. They are preserved in git history: `git show 32997e0:Not_Relevant/`.

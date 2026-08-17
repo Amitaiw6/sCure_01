@@ -17,7 +17,6 @@ Raspberry Pi with an 800×480 touch kiosk. Requirements: [docs/sCure_SRS.html](d
 | `public/config/` | `errors.json` (error registry), `versions.json` (release notes), `system.json`. |
 | `qa-tool/` | Browser QA harness (~200 checks) run against a live server. |
 | `docs/`, `design-handoff/` | SRS, CSV import guide, diagrams; designer package (single-file UI build). |
-| `Not_Relevant/` | Parked code that is no longer part of the active software (legacy drivers, prototypes, bench tools). Not built or deployed. |
 
 ## Running
 

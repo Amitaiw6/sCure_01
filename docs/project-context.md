@@ -57,7 +57,7 @@ Also: `cloud/portal.py` (Flask + SQLite portal, Fly.io), `qa-tool/index.html` (b
 | Offline demo data | `src/data/demo-data.ts` | `DEMO_PRESETS`, `DEMO_USER_PROGRAMS`, `DEMO_PRINTS` |
 | Static config | `public/config/{system,errors,versions}.json`, `public/materials/`, `public/compliance/sbom.json` | |
 
-Cleaned up in the 2026-08 refactor: step-type unions come from `MaterialContext` (`ProcessType` exported), limits from `src/lib/limits.ts`, one `API_BASE` exported from `hardware-api.ts`; the unreachable `/material-editor` page (`MaterialEditorPage`/`StepCard`/`StepModal`), `StartCureButton`, `SectionHeader`, unused shadcn primitives and `src/assets/*` are parked under `Not_Relevant/`. Demo user programs / prints load only in `import.meta.env.DEV`; `DEMO_PRESETS` remains the production preset fallback (no-DB deployments get 503 from `/api/materials/presets`).
+Cleaned up in the 2026-08 refactor: step-type unions come from `MaterialContext` (`ProcessType` exported), limits from `src/lib/limits.ts`, one `API_BASE` exported from `hardware-api.ts`; the unreachable `/material-editor` page (`MaterialEditorPage`/`StepCard`/`StepModal`), `StartCureButton`, `SectionHeader`, unused shadcn primitives and `src/assets/*` were removed (recoverable from git commit `32997e0`, folder `Not_Relevant/`). Demo user programs / prints load only in `import.meta.env.DEV`; `DEMO_PRESETS` remains the production preset fallback (no-DB deployments get 503 from `/api/materials/presets`).
 
 ## 4. Where things are (backend)
 
@@ -77,7 +77,7 @@ Cleaned up in the 2026-08 refactor: step-type unions come from `MaterialContext`
 | Structured log | `io_controller/system_log.py` | `log`, `recent(n)`, `export(dest)`, `clear()` |
 | Tuning (no code change needed) | `io_controller/components.json` | re-read on each activation |
 | Cloud portal | `cloud/portal.py` | Flask+SQLite, `POST /api/agent/sync` (machine key), data-only commands |
-| Parked (not active) | `Not_Relevant/` | legacy standalone drivers/dashboards, C++ driver, bench-analysis scripts, prototypes — see `Not_Relevant/README.md`; never import from there |
+| Removed (git history only) | `git show 32997e0:Not_Relevant/` | legacy standalone drivers/dashboards, C++ driver, bench-analysis scripts, UI prototypes — deleted 2026-08-18; recover from history if ever needed |
 
 **API surface (all JSON, error shape `{ok, code, message}`)** — state `GET /api/state`; cure steps `POST /api/cure/{heat,dry,cure-405,cure-450,cool,nitrogen,stop}`; manual `POST /api/chamber/temperature|stop`, `/api/fans/<fan>`, `/api/damper/open|close`, `/api/uv`, `/api/bofa`, `/api/rgb`, `/api/door/open`, `/api/door-abort/ack`; diagnostics `POST /api/diagnostics/fan-test|led-test`; data `GET/POST /api/materials/user`, `GET /api/materials/presets`, `GET/POST /api/print-history`, `GET /api/cure-history`, `POST /api/cure-runs/<id>/{start,telemetry,finish,report,phase}`, `GET /api/phase-timings`; system `GET /api/system/version`, `POST /api/system/{reboot,shutdown,datetime,update,export-logs,export-csv,export-report}`, `GET /api/system/update/{manifest,package}`; network `GET /api/network/status`, `POST /api/network/{static,diagnostics}`; cloud `POST /api/cloud/config`. Full list with semantics: read `server/app.py` route decorators.
 

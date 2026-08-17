@@ -7,7 +7,7 @@ Kiosk software for the sCure Box (UV post-curing enclosure for 3D prints) on a R
 - REUSE BEFORE CREATE: search the repo and read `docs/project-context.md` before designing; modify existing functions/components/endpoints instead of adding parallel ones. A new file, class, service or abstraction needs a written reason why no existing one could be extended.
 - Minimal, localized change: touch the fewest files, no unrelated refactoring, no redesign of working parts unless the requirement demands it. Preserve existing behavior unless the requirement explicitly changes it.
 - Never commit `keys/scure-update.key`, `.mcp.json` tokens, `server/data/`, or `cloud/portal_config.json`; they hold secrets or device data.
-- Never import from or extend `Not_Relevant/` (parked legacy drivers, dashboards, C++ driver, prototypes, bench tools); the live driver is `io_controller/io_controller.py` (via `server/io_bridge.py`).
+- Legacy standalone drivers, Tk dashboards, the C++ hardware driver, bench-analysis scripts and UI prototypes were removed in the 2026-08 cleanup (recover from git commit `32997e0` under `Not_Relevant/` if ever needed); the live driver is `io_controller/io_controller.py` (via `server/io_bridge.py`).
 - Process modules own no hardware: act only through `SystemController` verified functions (`set_and_verify`), never write PCA/GPIO directly from server code.
 - Add error codes to `public/config/errors.json`; never invent inline codes. User-visible errors are raised via the alert registry (`triggerAlert` / `scure-alert` event).
 
