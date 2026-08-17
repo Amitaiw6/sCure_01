@@ -1,0 +1,201 @@
+{
+  "_comment": "sCure version registry - newest first. On every release: bump the VERSION file at the repo root AND add an entry here (version, date, notes). The Settings > Versions modal shows this list.",
+  "history": [
+    {
+      "version": "0.4.9",
+      "date": "2026-08-17",
+      "notes": [
+        "OFF (no-heating) mode extended to Heating and Drying steps in every program editor — pressing minus below 30°C now shows OFF there too (was Cure/Bleaching only)",
+        "Run behavior: an OFF Heating step is a plain timed hold (no outputs); an OFF Drying step runs the intake fan at 30% only (air-dry, fan released when the step ends); Cure/Bleaching stay UV-only",
+        "CSV import and the cloud portal accept below-30 temperatures for all heat-type steps with the same OFF semantics"
+      ]
+    },
+    {
+      "version": "0.4.8",
+      "date": "2026-08-17",
+      "notes": [
+        "No-heating steps now display OFF instead of a temperature: in every program editor (step editor, CSV builder, cloud portal) pressing minus below 30°C on a Cure/Bleaching step shows a single OFF notch — no misleading 15/20/25°C values (25 is stored internally; below the floor they all behave identically)"
+      ]
+    },
+    {
+      "version": "0.4.7",
+      "date": "2026-08-17",
+      "notes": [
+        "No-heating mode now available in EVERY program editor: the CSV program builder also accepts Cure/Bleaching below 30°C (UV only at ambient, with the same hint), skips no-heat steps in the min-temperature / cooling-target chain, and never pushes them up when an earlier step's temperature rises"
+      ]
+    },
+    {
+      "version": "0.4.6",
+      "date": "2026-08-17",
+      "notes": [
+        "Cure/Bleaching card now shows a remaining-time COUNTDOWN (MM:SS) in the gauge center during the UV hold — same presentation as the heating gauge; chamber temp is shown while ramping (Bleaching previously had no proper gauge at all)",
+        "No-heating mode: a Cure/Bleaching step with temperature below 30°C (the hardware heating floor) runs UV-only at ambient — no heater loop, no ramp; allowed in the step editor (15-29°C, with a hint), CSV import, and the cloud portal; such steps are exempt from the rising-temperature sequence rule",
+        "QA: new 'Cure Gauge Counts Down' and 'Below 30°C Runs Without Heating' logic-mirror tests"
+      ]
+    },
+    {
+      "version": "0.4.5",
+      "date": "2026-08-17",
+      "notes": [
+        "Fix: heater ON-hours counter ran while the machine was idle — after a heating stop the driver's last delta-sigma sample (heaterOut/heaterPwm) stayed latched, so a stale heaterOut=true kept counting 24/7 (heater hours climbed past the heater-fan hours, which is physically impossible)",
+        "Fixed at the source (temperature_control clears pwm/heater_out on stop/shutdown), in /api/state (heaterPwm=null, heaterOut=false while the loop is inactive), and in the counter itself (heater seconds only accumulate while isHeating)",
+        "QA: new 'Heater Hours Only While Heating' logic-mirror test"
+      ]
+    },
+    {
+      "version": "0.4.4",
+      "date": "2026-08-17",
+      "notes": [
+        "Process indicator on the RGB strip is now BLUE (was yellow) — the moving comet while heating/cooling/UV runs (components.json rgb.status.busy)",
+        "New POST /api/rgb — manual RGB strip override (?on=1&color=purple|RRGGBB&brightness=40): named colors or hex, pauses the automatic status colors while active, ?on=0 hands the strip back",
+        "QA: new 'RGB Manual Override' test"
+      ]
+    },
+    {
+      "version": "0.4.3",
+      "date": "2026-08-12",
+      "notes": [
+        "Cooling phase card now shows the live chamber temperature in the center of the ring (COOL °C), the same presentation as the heating gauge — replaces the empty dash; completed/pending cooling cards show the target temperature",
+        "QA: new 'Cooling Gauge Shows Live Temp' logic-mirror test"
+      ]
+    },
+    {
+      "version": "0.4.2",
+      "date": "2026-08-12",
+      "notes": [
+        "Fix: the cure-screen seconds readout now advances smoothly 1-by-1 — the display refreshes every 250ms so a real second boundary is never missed (with the 1s refresh, a late tick made the readout occasionally skip a second)",
+        "Elapsed time itself is unchanged (still wall-clock anchored); refreshes within the same second are no-ops, so there is no extra render load",
+        "QA: new 'Timer Advances 1s At A Time' test — 40 jittered 250ms samples over 10s must produce a strict 0,1,2,…,10 readout"
+      ]
+    },
+    {
+      "version": "0.4.1",
+      "date": "2026-08-12",
+      "notes": [
+        "Fix: the step's 'Timer Start' setting is now honored by the cure screen — 'On ramp start' counts the step time through the temperature ramp (and may finish mid-ramp), 'On target' keeps waiting for the target as before. The setting was saved by the program builder but the cure screen ignored it",
+        "QA: new 'Timer Start Mode Honored' logic-mirror test"
+      ]
+    },
+    {
+      "version": "0.4.0",
+      "date": "2026-08-12",
+      "notes": [
+        "Real phase-timing analytics: every completed phase reports its true wall-clock duration (planned vs. actual, ramp share, start/end temps) to server/data/phase_timings.json on the machine; served at GET /api/phase-timings — the raw data for re-estimating real program times",
+        "Cure completion screen shows the TRUE total time — wall-clock from the moment the program started (was: sum of the hold timers only, ramps excluded)",
+        "QA: new 'Phase Timings Collected' test — endpoint shape + invalid records rejected"
+      ]
+    },
+    {
+      "version": "0.3.10",
+      "date": "2026-08-12",
+      "notes": [
+        "Fix: cure phase timers now track wall-clock time (performance.now() anchors) instead of counting 1s interval ticks — on the machine the browser fires ticks late under load and the lag accumulated, so timed phases ran minutes longer than programmed",
+        "QA: new 'Phase Timer Tracks Wall-Clock' test verifies late/missed ticks no longer stretch phase durations"
+      ]
+    },
+    {
+      "version": "0.3.9",
+      "date": "2026-08-09",
+      "notes": [
+        "Cloud portal: Stratasys header logo enlarged (26px -> 42px)"
+      ]
+    },
+    {
+      "version": "0.3.8",
+      "date": "2026-08-09",
+      "notes": [
+        "Cloud portal: Stratasys logo added to the header (embedded in the page, black-on-white to match the light theme)"
+      ]
+    },
+    {
+      "version": "0.3.7",
+      "date": "2026-08-09",
+      "notes": [
+        "Cloud portal: CureBox selector is now always visible (also with a single machine), with online/offline indicator per machine",
+        "Cloud portal: live search box — filters work programs and recent prints by name, material, printer or status as you type"
+      ]
+    },
+    {
+      "version": "0.3.6",
+      "date": "2026-08-09",
+      "notes": [
+        "Cloud portal: CureBox selector — when more than one machine is connected, tabs at the top let you show all machines or focus on one (choice is remembered)"
+      ]
+    },
+    {
+      "version": "0.3.5",
+      "date": "2026-08-09",
+      "notes": [
+        "Cloud portal: switched to a light black-on-white theme (white background, black text and buttons; green/red kept for online/offline status and errors)"
+      ]
+    },
+    {
+      "version": "0.3.4",
+      "date": "2026-08-09",
+      "notes": [
+        "Cloud portal fix: switching a step's process type now correctly swaps the row's fields (e.g. selecting Cooling shows the Fast/Medium/Slow mode and hides Time/UV) — previously the old fields stayed on screen"
+      ]
+    },
+    {
+      "version": "0.3.3",
+      "date": "2026-08-09",
+      "notes": [
+        "Cloud portal: program step editor now matches the machine UI — per-process fields (Cooling: target temp 30-75°C + cooling mode, no time; Cure/Bleaching: UV 10-100% + timer/UV start modes; Nitrogen: auto purge, no fields)",
+        "Cloud portal: saving validates the same limits and step-sequence rules as the machine (temperature ranges, N₂ purge rules, cooling must be 5°C below the previous step)"
+      ]
+    },
+    {
+      "version": "0.3.2",
+      "date": "2026-08-06",
+      "notes": [
+        "Heater fan cooldown run-on extended: 30% for 15 minutes (was 10) after every heating stop",
+        "Run-on is skipped only on door abort / process exit, or when a Cooling step takes over (it runs the heater fan at 100% itself)"
+      ]
+    },
+    {
+      "version": "0.3.1",
+      "date": "2026-08-06",
+      "notes": [
+        "Heating PI tuning: kp raised 0.08 -> 0.22 (faster ramp response; ki/kd unchanged)"
+      ]
+    },
+    {
+      "version": "0.3.0",
+      "date": "2026-08-06",
+      "notes": [
+        "Heating control changed to PI(D) + delta-sigma (replaces the ON/OFF 1°C thermostat)",
+        "50 ms control loop: kp=0.08, ki=0.00015/cycle, integrator clamp 0-0.85 (power 0..1)",
+        "Delta-sigma DAC streams the PI power to the heater element - average ON-time equals the commanded power",
+        "State exposes heaterPwm (commanded power %) + heaterOut (element ON right now)",
+        "Heater ON-hours counter now accumulates real element-energized time (heaterOut)",
+        "All PI gains tunable in components.json heating section; safety layer (pre-flight, health check, cooldown) unchanged",
+        "QA: Heater PI + Delta-Sigma test (power law + ON-ratio verified)"
+      ]
+    },
+    {
+      "version": "0.2.0",
+      "date": "2026-08-06",
+      "notes": [
+        "Fast cooling boost: the four LED-cooling fans (left/right/back/door) join the chamber fan in FAST mode",
+        "LED fans auto-release when cooling ends, on stop, on a mode change away from fast, and on door abort",
+        "Configurable via components.json cooling.fast_led_fan_pwm (default 100%, 0 disables)",
+        "Manual LED-fan control is blocked while the fast-cool boost owns the fans",
+        "QA: Fast Cool Engages LED Fans test (engage + release verified via /api/state)"
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "date": "2026-08-06",
+      "notes": [
+        "First versioned release (versioning reset - single source of truth in VERSION file)",
+        "ON/OFF thermostat heating control with 1°C hysteresis (PI removed)",
+        "Fixed-duty cooling modes: fast 100% / medium 60% / slow 30%",
+        "Heater fan cooldown: 30% for 10 minutes after every heating stop (except door abort)",
+        "Real LAN + internet detection (eth0 carrier, live TCP-443 watch)",
+        "Component runtime counters (ON-hours per wear part)",
+        "Door-open safety abort with 10s grace countdown (Err 6016)",
+        "Central error registry + QA tool coverage"
+      ]
+    }
+  ]
+}

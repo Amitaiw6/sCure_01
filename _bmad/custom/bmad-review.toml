@@ -1,0 +1,14 @@
+# sCure_01 team overrides for bmad-review (generic multi-lens reviewer).
+
+[workflow]
+persistent_facts = ["file:{project-root}/AGENTS.md"]
+review_guidance = [
+  "Apply the sCure_01 core rules: REUSE BEFORE CREATE, minimal localized change, no unnecessary abstractions, preserve existing behavior.",
+]
+
+[[workflow.lenses]]
+code = "simplification"
+name = "Simplification"
+applies_to = "code"
+when = "always"
+instruction = "Propose only behavior-preserving simplifications of the reviewed code: dead/redundant code, unnecessary indirection, duplicated logic, over-general parameters with one caller, new code that duplicates an existing function/hook/component in the repo (name it with its path). Each finding: location, trigger_condition (what is over-complex or duplicated), guard_snippet (the simpler version, 3-10 lines), potential_consequence (maintenance cost / drift). Return [] if the code is already minimal."

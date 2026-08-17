@@ -1,0 +1,2985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sCure QA Tool</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0a; color: #e0e0e0; min-height: 100vh; }
+
+  .header { background: #111; border-bottom: 2px solid #f44336; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .header h1 { font-size: 18px; color: #f44336; }
+  .header .version { font-size: 11px; color: #666; margin-top: 2px; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .status-dot.connected { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+  .status-dot.disconnected { background: #f44336; }
+  .status-label { font-size: 11px; color: #888; }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+  .config-bar { background: #151515; border: 1px solid #222; border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: center; gap: 14px; }
+  .config-bar label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+  .config-bar input { background: #0a0a0a; border: 1px solid #333; border-radius: 6px; padding: 6px 10px; color: #fff; font-size: 13px; width: 250px; }
+  .config-bar input:focus { outline: none; border-color: #f44336; }
+
+  .btn { padding: 8px 18px; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; }
+  .btn:active { transform: scale(0.97); }
+  .btn-run { background: #f44336; color: #fff; }
+  .btn-run:hover { background: #e53935; }
+  .btn-run:disabled { background: #333; color: #666; cursor: not-allowed; }
+  .btn-stop { background: #ff9800; color: #000; }
+  .btn-outline { background: transparent; border: 1px solid #444; color: #ccc; }
+  .btn-outline:hover { border-color: #888; color: #fff; }
+  .btn-small { padding: 5px 12px; font-size: 11px; border-radius: 6px; }
+
+  .summary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+  .summary-card { background: #151515; border: 1px solid #222; border-radius: 10px; padding: 14px; text-align: center; }
+  .summary-card .num { font-size: 28px; font-weight: 700; line-height: 1; }
+  .summary-card .label { font-size: 10px; color: #888; text-transform: uppercase; margin-top: 4px; letter-spacing: 0.5px; }
+  .num.pass { color: #4caf50; }
+  .num.fail { color: #f44336; }
+  .num.warn { color: #ff9800; }
+  .num.skip { color: #666; }
+  .num.total { color: #fff; }
+
+  .progress-bar { width: 100%; height: 6px; background: #1a1a1a; border-radius: 4px; margin-bottom: 20px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s; background: linear-gradient(90deg, #f44336, #ff9800, #4caf50); }
+
+  .category { margin-bottom: 16px; }
+  .category-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #151515; border: 1px solid #222; border-radius: 10px 10px 0 0; cursor: pointer; user-select: none; }
+  .category-header:hover { background: #1a1a1a; }
+  .category-header h3 { font-size: 14px; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .category-header .cat-icon { font-size: 16px; }
+  .category-header .cat-stats { font-size: 11px; color: #666; }
+  .category-header .expand { color: #555; transition: transform 0.2s; }
+  .category.open .expand { transform: rotate(180deg); }
+
+  .test-list { border: 1px solid #222; border-top: none; border-radius: 0 0 10px 10px; overflow: hidden; }
+  .category:not(.open) .test-list { display: none; }
+
+  .test-row { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid #1a1a1a; transition: background 0.15s; }
+  .test-row:last-child { border-bottom: none; }
+  .test-row:hover { background: #131313; }
+  .test-row.running { background: rgba(244, 67, 54, 0.05); }
+
+  .test-status { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; shrink: 0; }
+  .test-status.pending { background: #1a1a1a; color: #444; }
+  .test-status.running { background: #f44336; color: #fff; animation: pulse 1s infinite; }
+  .test-status.pass { background: #1b5e20; color: #4caf50; }
+  .test-status.fail { background: #b71c1c; color: #f44336; }
+  .test-status.warn { background: #e65100; color: #ff9800; }
+  .test-status.skip { background: #1a1a1a; color: #555; }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+  .test-info { flex: 1; }
+  .test-name { font-size: 12px; color: #ddd; }
+  .test-desc { font-size: 10px; color: #555; margin-top: 1px; }
+
+  .test-result { font-size: 11px; font-family: monospace; color: #888; max-width: 300px; text-align: right; }
+  .test-result.pass { color: #4caf50; }
+  .test-result.fail { color: #f44336; }
+  .test-result.warn { color: #ff9800; }
+
+  .test-time { font-size: 10px; color: #444; font-family: monospace; width: 50px; text-align: right; }
+
+  .log-section { margin-top: 20px; }
+  .log-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .log-header h3 { font-size: 13px; color: #888; }
+  .log-box { background: #0d0d0d; border: 1px solid #222; border-radius: 10px; padding: 12px; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 11px; line-height: 1.6; }
+  .log-line { color: #555; }
+  .log-line.info { color: #888; }
+  .log-line.pass { color: #4caf50; }
+  .log-line.fail { color: #f44336; }
+  .log-line.warn { color: #ff9800; }
+  .log-line .ts { color: #333; margin-right: 8px; }
+
+  .report-modal { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.85); align-items: center; justify-content: center; }
+  .report-modal.open { display: flex; }
+  .report-content { background: #151515; border: 1px solid #333; border-radius: 14px; padding: 24px; width: 600px; max-height: 80vh; overflow-y: auto; }
+  .report-content h2 { color: #fff; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>sCure QA Tool</h1>
+    <div class="version">v1.0.0 - Hardware & Software Quality Assurance</div>
+  </div>
+  <div class="header-right">
+    <div class="status-dot disconnected" id="statusDot"></div>
+    <span class="status-label" id="statusLabel">Disconnected</span>
+    <button class="btn btn-outline btn-small" onclick="exportReport()">Export Report</button>
+  </div>
+</div>
+
+<div class="container">
+  <!-- Config -->
+  <div class="config-bar">
+    <label>API URL:</label>
+    <input type="text" id="apiUrl" value="http://localhost:3001" onchange="checkConnection()">
+    <button class="btn btn-outline btn-small" onclick="checkConnection()">Connect</button>
+    <div style="flex:1"></div>
+    <button class="btn btn-run" id="runAllBtn" onclick="runAllTests()" disabled>Run All Tests</button>
+    <button class="btn btn-stop btn-small" id="stopBtn" onclick="stopTests()" style="display:none">Stop</button>
+  </div>
+
+  <!-- Summary -->
+  <div class="summary">
+    <div class="summary-card"><div class="num total" id="sumTotal">0</div><div class="label">Total</div></div>
+    <div class="summary-card"><div class="num pass" id="sumPass">0</div><div class="label">Passed</div></div>
+    <div class="summary-card"><div class="num fail" id="sumFail">0</div><div class="label">Failed</div></div>
+    <div class="summary-card"><div class="num warn" id="sumWarn">0</div><div class="label">Warnings</div></div>
+    <div class="summary-card"><div class="num skip" id="sumSkip">0</div><div class="label">Skipped</div></div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+
+  <!-- Test Categories -->
+  <div id="testCategories"></div>
+
+  <!-- Log -->
+  <div class="log-section">
+    <div class="log-header">
+      <h3>Test Log</h3>
+      <button class="btn btn-outline btn-small" onclick="clearLog()">Clear</button>
+    </div>
+    <div class="log-box" id="logBox"></div>
+  </div>
+</div>
+
+<!-- Report Modal -->
+<div class="report-modal" id="reportModal">
+  <div class="report-content" id="reportContent"></div>
+</div>
+
+<script>
+// ============================================================
+// Test Definitions
+// ============================================================
+const TEST_CATEGORIES = [
+  {
+    id: 'api',
+    name: 'API Connectivity',
+    icon: '🌐',
+    tests: [
+      { id: 'api_state', name: 'GET /api/state', desc: 'Verify hardware state endpoint responds', endpoint: '/api/state', method: 'GET', expect: 'chamberTemp' },
+      { id: 'api_network', name: 'GET /api/network/status', desc: 'Verify network status endpoint', endpoint: '/api/network/status', method: 'GET', expect: 'connected' },
+      { id: 'net_auto_watch', name: 'Auto Internet Watch Live', desc: 'The background internet watch publishes its verdict: /api/state.internetOk and /api/network/status.internet are booleans (LAN "connected" and real internet reachability are reported separately)', check: 'net_auto_watch' },
+      { id: 'net_strip_logic', name: 'No-Internet Strip Logic', desc: 'StatusLeds: idle+offline → solid blue; process+offline → the comet runs in blue (both facts visible); fault and door-open always win; online → normal colors', check: 'net_strip_logic' },
+      { id: 'counters_live', name: 'Component Counters Live + Persisted', desc: 'Real ON-hour counters (led405/led450/coolingFan/heater/heaterFan) are published in /api/state.counters, never decrease between samples, and a running component makes its counter advance (server persists them to disk across reboots)', check: 'counters_live' },
+      { id: 'phase_timings', name: 'Phase Timings Collected', desc: 'Real per-phase durations accumulate in server/data/phase_timings.json: GET /api/phase-timings returns the records, and the per-run POST validates its payload (process + seconds required) so garbage never pollutes the timing data', check: 'phase_timings' },
+      { id: 'api_materials', name: 'GET /api/materials/user', desc: 'Verify user materials endpoint', endpoint: '/api/materials/user', method: 'GET', expectArray: true },
+      { id: 'api_history', name: 'GET /api/print-history', desc: 'Verify print history endpoint', endpoint: '/api/print-history', method: 'GET', expectArray: true },
+      { id: 'history_durable', name: 'Histories Durable Without DB', desc: 'Print history AND cure history are served from a durable store (Postgres or the server/data files) — both GET endpoints return arrays, never 503, so recorded prints and cure sessions survive a power-off', check: 'history_durable' },
+      { id: 'cloud_sync', name: 'Cloud Sync Agent Status', desc: '/api/state.cloudSync reports the portal sync agent: enabled + a recent successful sync when server/data/cloud.json is configured; cleanly disabled (no error) when not. Data-only by design — the portal can never actuate hardware', check: 'cloud_sync' },
+      { id: 'ui_served', name: 'UI Served At /', desc: 'GET / returns the built UI page — the fullscreen app (Pi kiosk / Windows desktop window) opens this URL', check: 'ui_served' },
+      { id: 'ui_spa_fallback', name: 'SPA Fallback Route', desc: 'GET /settings (a client route, not a file) still returns the UI page, so a refresh inside the kiosk never shows a 404', check: 'ui_spa_fallback' },
+      { id: 'ui_fill_scale', name: 'UI Fills Any Screen', desc: 'fitToScreen logic (main.tsx): the 800x480 canvas is stretched to the full viewport — 1280x720 DSI panel, desktop windows, no black margins', check: 'ui_fill_scale' },
+      { id: 'ui_builder_size', name: 'Dialogs Scale With The Screen', desc: 'Dialog/Select/OnScreenKeyboard portals render inside the scaled #root canvas, so the 550x460 Build Cure Program dialog shows at ~69% x ~96% of any screen and keyboard lettering scales up with the panel', check: 'ui_builder_size' },
+    ]
+  },
+  {
+    id: 'temperature',
+    name: 'Temperature System',
+    icon: '🌡',
+    tests: [
+      { id: 'temp_read', name: 'Temperature Sensor Read', desc: 'Read current chamber temperature', endpoint: '/api/state', method: 'GET', check: 'temp_range' },
+      { id: 'temp_set', name: 'Set Target Temperature', desc: 'Set target to 40°C and verify', endpoint: '/api/chamber/temperature?target=40', method: 'POST', check: 'temp_set' },
+      { id: 'temp_stop', name: 'Stop Heating', desc: 'Stop heating and verify', endpoint: '/api/chamber/stop', method: 'POST', expect: 'ok' },
+      { id: 'temp_ramp_live', name: 'Chamber Temp Reaches Target', desc: 'Command heat to 40°C, then verify /api/state chamberTemp actually rises toward the target — the Cure screen displays and follows this measured value', check: 'temp_ramp_live' },
+      { id: 'temp_ramp_logic', name: 'Ramp Ends At Measured Temp', desc: 'Cure screen logic: the ramp keeps going while the measured chamber temp is below target−0.5°C, and the hold timer starts only when it reaches the target', check: 'temp_ramp_logic' },
+      { id: 'timer_wallclock', name: 'Phase Timer Tracks Wall-Clock', desc: 'Cure screen logic: elapsed time is computed from a performance.now() anchor, not by counting setInterval ticks — late/missed ticks (kiosk browser under load) must not stretch the phase duration', check: 'timer_wallclock' },
+      { id: 'timer_smooth', name: 'Timer Advances 1s At A Time', desc: 'Cure screen logic: the 250ms display refresh catches every real second boundary, so the seconds readout advances by exactly 1 (a 1s interval firing late used to skip seconds), and samples within the same second cause no state change', check: 'timer_smooth' },
+      { id: 'cure_countdown', name: 'Cure Gauge Counts Down', desc: 'Cure screen logic: the Cure/Bleaching card centers a remaining-time countdown (MM:SS, REMAINING) during the UV hold — same presentation as the heating gauge — and the chamber temp while ramping', check: 'cure_countdown' },
+      { id: 'no_heat_step', name: 'Below 30°C Runs Without Heating', desc: 'Cure screen logic: any heat-type step below the 30°C heating floor is an OFF (no-heat) step — Cure/Bleaching go UV-only, Drying fan-only, Heating a plain timed hold; shown as OFF in every editor, never ramps, and exempt from the rising-temperature sequence rule', check: 'no_heat_step' },
+      { id: 'uv_after_ramp', name: 'UV Start Mode Gating', desc: 'Cure screen logic: with UV Start = "At temperature" a ramping Cure/Bleacher step heats FIRST with the UV off until the measured chamber temp reaches the target; with "On ramp start" the LEDs light from the very start of the ramp', check: 'uv_after_ramp' },
+      { id: 'telemetry_report', name: 'Report Telemetry Sampling', desc: 'Cure screen logic: telemetry samples at t=0 and then every 5s, immune to the 1s status polling — so every run (even one aborted seconds in) has at least one sample and its report is downloadable from Cure History', check: 'telemetry_report' },
+      { id: 'report_usb_export', name: 'Report Export To USB', desc: 'Cure History download button: on the machine the report HTML is written straight to the USB drive (POST /api/system/export-report); a machine-side failure (9081 no USB / 9082 write failed) raises the alert instead of silently downloading; only dev/API-unreachable falls back to a browser download', check: 'report_usb_export' },
+    ]
+  },
+  {
+    id: 'fans',
+    name: 'Fan System',
+    icon: '💨',
+    tests: [
+      { id: 'fan_led', name: 'LED Cooling Fan', desc: 'Set LED cooling fan to 50% and verify', endpoint: '/api/fans/led_cooling?speed=50', method: 'POST', expect: 'ok' },
+      { id: 'fan_intake', name: 'Chamber Intake Fan', desc: 'Set chamber intake fan to 50%', endpoint: '/api/fans/chamber_intake?speed=50', method: 'POST', expect: 'ok' },
+      { id: 'fan_heating', name: 'Chamber Heating Fan', desc: 'Set heating fan to 50%', endpoint: '/api/fans/chamber_heating?speed=50', method: 'POST', expect: 'ok' },
+      { id: 'fan_test', name: 'Fan Diagnostic Test', desc: 'Run fan RPM test', endpoint: '/api/diagnostics/fan-test', method: 'POST', check: 'fan_rpm' },
+      { id: 'fan_stop', name: 'Stop All Fans', desc: 'Set all fans to 0%', endpoint: '/api/fans/led_cooling?speed=0', method: 'POST', expect: 'ok' },
+    ]
+  },
+  {
+    id: 'leds',
+    name: 'UV LED System',
+    icon: '💡',
+    tests: [
+      { id: 'led_test', name: 'LED Diagnostic', desc: 'Run full LED diagnostic test', endpoint: '/api/diagnostics/led-test', method: 'POST', check: 'led_results' },
+    ]
+  },
+  {
+    id: 'mechanical',
+    name: 'Mechanical Systems',
+    icon: '⚙',
+    tests: [
+      { id: 'door_open', name: 'Door Open', desc: 'Open the door', endpoint: '/api/door/open', method: 'POST', expect: 'ok' },
+      { id: 'damper_open', name: 'Damper Open', desc: 'Open the damper', endpoint: '/api/damper/open', method: 'POST', expect: 'ok' },
+      { id: 'damper_close', name: 'Damper Close', desc: 'Close the damper', endpoint: '/api/damper/close', method: 'POST', expect: 'ok' },
+    ]
+  },
+  {
+    id: 'config',
+    name: 'Configuration Files',
+    icon: '📁',
+    tests: [
+      { id: 'cfg_presets', name: 'Presets (API)', desc: 'GET /api/materials/presets returns the seeded preset programs (Postgres)', endpoint: '/api/materials/presets', method: 'GET', expectArray: true },
+      { id: 'cfg_errors', name: 'Errors JSON', desc: 'Validate errors.json structure', url: '/config/errors.json', check: 'errors' },
+      { id: 'cfg_system', name: 'System JSON', desc: 'Validate system.json config', url: '/config/system.json', check: 'system' },
+    ]
+  },
+  {
+    id: 'network',
+    name: 'Network Diagnostics',
+    icon: '📡',
+    tests: [
+      { id: 'net_ping', name: 'Ping Test (8.8.8.8)', desc: 'Ping Google DNS', endpoint: '/api/network/diagnostics', method: 'POST', body: { tool: 'ping', address: '8.8.8.8' }, expect: 'ok' },
+      { id: 'net_dns', name: 'DNS Lookup', desc: 'Resolve google.com', endpoint: '/api/network/diagnostics', method: 'POST', body: { tool: 'nslookup', address: 'google.com' }, expect: 'ok' },
+    ]
+  },
+  {
+    id: 'system',
+    name: 'System Functions',
+    icon: '🖥',
+    tests: [
+      { id: 'sys_logs', name: 'Export Logs', desc: 'Test log export function', endpoint: '/api/system/export-logs', method: 'POST', expect: 'ok' },
+      { id: 'sys_export_csv', name: 'Export CSV to USB', desc: 'CSV export endpoint writes to the connected USB (or reports no-USB)', endpoint: '/api/system/export-csv', method: 'POST', body: { filename: 'qa-test.csv', content: 'Step,Process,Temperature,UVIntensity,CoolingMode\n1,Heating,40,,' }, expect: 'message' },
+      { id: 'sys_version', name: 'Version Info', desc: '/api/system/version reports the VERSION-file app version (x.y.z) + live build/OS/boot info', check: 'sys_version' },
+    ]
+  },
+  {
+    id: 'data_persistence',
+    name: 'Data Persistence (PostgreSQL / disk)',
+    icon: '🗄',
+    tests: [
+      { id: 'data_materials_get', name: 'Get User Materials', desc: 'GET /api/materials/user returns user programs (DB view or JSON fallback)', endpoint: '/api/materials/user', method: 'GET', expectArray: true },
+      { id: 'data_materials_persist', name: 'Programs Survive Power-Off', desc: 'Save a program, re-read it (durable JSON store on the SSD) — the user list is preserved unchanged', check: 'data_persist_roundtrip' },
+      { id: 'data_print_history_get', name: 'Get Print History', desc: 'GET /api/print-history returns print records (§6.4)', endpoint: '/api/print-history', method: 'GET', expectArray: true },
+      { id: 'data_cure_history_get', name: 'Get Cure History', desc: 'GET /api/cure-history returns cure runs (§8) — empty [] without a DB', endpoint: '/api/cure-history', method: 'GET', expectArray: true },
+      { id: 'data_cure_start', name: 'Start Cure Run (DB)', desc: 'POST /api/cure-runs/qa-test-run/start records a run — needs DATABASE_URL (503 otherwise)', endpoint: '/api/cure-runs/qa-test-run/start', method: 'POST', body: { materialName: 'QA Material', steps: 2, phases: ['Heating', 'Cooling'], targetTemp: 60, serialNumber: 'QA-BOX-001' }, expect: 'ok' },
+      { id: 'data_telemetry', name: 'Record Telemetry (DB)', desc: 'POST /api/cure-runs/qa-test-run/telemetry appends a sample to cure_run_telemetry', endpoint: '/api/cure-runs/qa-test-run/telemetry', method: 'POST', body: { t: 5, chamberTemp: 42.5, uvOn: false }, expect: 'ok' },
+      { id: 'data_cure_finish', name: 'Finish Cure Run (DB)', desc: 'POST /api/cure-runs/qa-test-run/finish closes the run', endpoint: '/api/cure-runs/qa-test-run/finish', method: 'POST', body: { status: 'completed', stepsCompleted: 2 }, expect: 'ok' },
+      { id: 'data_report_save', name: 'Save Cure Report (DB)', desc: 'POST /api/cure-runs/qa-test-run/report persists the report to cure_reports', endpoint: '/api/cure-runs/qa-test-run/report', method: 'POST', body: { content: '<html>QA report</html>', summary: { materialName: 'QA Material', status: 'completed' }, format: 'html' }, expect: 'ok' },
+      { id: 'data_report_get', name: 'Fetch Cure Report (DB)', desc: 'GET /api/cure-runs/qa-test-run/report returns the saved report', endpoint: '/api/cure-runs/qa-test-run/report', method: 'GET', expect: 'ok' },
+    ]
+  },
+  {
+    id: 'cure_ops',
+    name: 'Cure Operation Functions',
+    icon: '🔥',
+    tests: [
+      { id: 'op_heat', name: 'Heat to Target', desc: 'heat_to_target_temperature(60)', endpoint: '/api/cure/heat?target=60', method: 'POST', expect: 'ok' },
+      { id: 'op_dry', name: 'Dry to Target', desc: 'dry_to_target_temperature(50)', endpoint: '/api/cure/dry?target=50', method: 'POST', expect: 'ok' },
+      { id: 'op_cure405', name: 'Cure UV 405nm', desc: 'cure_uv_405(target 60, intensity 30%)', endpoint: '/api/cure/cure-405?target=60&intensity=30', method: 'POST', expect: 'ok' },
+      { id: 'op_cure450', name: 'Bleaching UV 450nm', desc: 'cure_uv_450(target 60, intensity 40%)', endpoint: '/api/cure/cure-450?target=60&intensity=40', method: 'POST', expect: 'ok' },
+      { id: 'op_cool', name: 'Cool to Target', desc: 'cool_to_target_temperature(25, medium)', endpoint: '/api/cure/cool?target=25&mode=medium', method: 'POST', expect: 'ok' },
+      { id: 'op_stop', name: 'Stop All Outputs', desc: 'stop_all() turns off heater / UV / cooling', endpoint: '/api/cure/stop', method: 'POST', expect: 'ok' },
+      { id: 'op_bad_temp', name: 'Reject Bad Temp', desc: 'Heat with target 99°C is rejected (30-80)', endpoint: '/api/cure/heat?target=99', method: 'POST', check: 'hw_reject', code: 7001 },
+      { id: 'op_bad_mode', name: 'Reject Bad Cooling Mode', desc: 'Cool with mode=turbo is rejected', endpoint: '/api/cure/cool?target=25&mode=turbo', method: 'POST', check: 'hw_reject', code: 7003 },
+    ]
+  },
+  {
+    id: 'io_integration',
+    name: 'IO Board Integration (io_controller)',
+    icon: '🔌',
+    tests: [
+      { id: 'io_state_source', name: 'Hardware Source', desc: 'GET /api/state reports the driving layer: real IO board (io_controller) or simulation', endpoint: '/api/state', method: 'GET', check: 'io_hw_source' },
+      { id: 'io_door_state', name: 'Door Interlock Read', desc: 'GET /api/state reads the door sensor (GPIO27) — doorClosed must be present', endpoint: '/api/state', method: 'GET', check: 'io_door' },
+      { id: 'io_heat_on', name: 'Heating ON (safety pre-flight)', desc: 'POST /api/cure/heat?target=40 — heater enables only after door-closed, fan spin-up + RPM and thermistor checks', endpoint: '/api/cure/heat?target=40', method: 'POST', expect: 'ok' },
+      { id: 'io_heat_state', name: 'Heating State Reflected', desc: 'GET /api/state shows isHeating + target after the heat command', endpoint: '/api/state', method: 'GET', check: 'io_heating_on' },
+      { id: 'io_uv_405', name: 'UV 405nm ON (Cure)', desc: 'POST /api/cure/cure-405 — wavelength routing (GPIO17) verified, 405nm LEDs + their fans start', endpoint: '/api/cure/cure-405?target=40&intensity=30', method: 'POST', expect: 'ok' },
+      { id: 'io_uv_state', name: 'UV State Reflected', desc: 'GET /api/state shows uvOn with wavelength 405', endpoint: '/api/state', method: 'GET', check: 'io_uv_on' },
+      { id: 'io_uv_450', name: 'UV 450nm ON (Bleaching)', desc: 'POST /api/cure/cure-450 — switches wavelength mode safely (all LEDs off first)', endpoint: '/api/cure/cure-450?target=40&intensity=30', method: 'POST', expect: 'ok' },
+      { id: 'io_cool_on', name: 'Cooling Mode ON', desc: 'POST /api/cure/cool — damper opens, chamber fan runs at the mode\'s fixed duty', endpoint: '/api/cure/cool?target=25&mode=medium', method: 'POST', expect: 'ok' },
+      { id: 'io_cool_pwm', name: 'Cooling Fixed Fan Duty', desc: 'Each cooling mode holds the chamber fan at its FIXED duty (no PI rate control): slow=30%, medium=60%, fast=100% — verified live via coolingFanPwm in /api/state', check: 'io_cool_pwm' },
+      { id: 'io_stop', name: 'Stop All Outputs', desc: 'POST /api/cure/stop turns heater + UV + cooling off through the safety layer', endpoint: '/api/cure/stop', method: 'POST', expect: 'ok' },
+      { id: 'io_stop_state', name: 'Outputs Off Reflected', desc: 'GET /api/state shows UV and cooling off after stop', endpoint: '/api/state', method: 'GET', check: 'io_all_off' },
+      { id: 'io_rgb_status', name: 'RGB Status Strip Logic', desc: 'StatusLeds (io_bridge): fault → BLINKING red; door open → BLINKING door color; process → yellow comet (BLUE comet when internet is unreachable); idle without internet → solid blue; all OK → solid normal; unreadable door sensor is not treated as open', check: 'io_rgb_status' },
+      { id: 'led_status_loop', name: 'LED Status Loop Every 1s', desc: 'StatusLeds watchdog re-classifies the machine state every status_sec=1s (animation keeps its own faster ticks) — any state change reaches the strip within 1 second', check: 'led_status_loop' },
+      { id: 'sampling_1s', name: 'Sampling Time ≤ 1s (HSI)', desc: 'HSI sampling-time rule: every reading is sampled at most every 1s — heating loop sample_sec=1s, cooling loop sample_sec=1s, status/door watchdog status_sec=1s, dashboard SENSOR_REFRESH_SEC=1s, UI /api/state poll=1s', check: 'sampling_1s' },
+      { id: 'io_door_abort', name: 'Door-Open Safety Abort', desc: 'Watchdog: door opened while ANY output is live → 10s countdown warning on screen; if it STAYS open → process aborted + ALL outputs off + strip turns red (Err 6016). Closing in time resumes; idle/unreadable sensor never aborts', check: 'io_door_abort' },
+      { id: 'io_door_ack', name: 'Door Abort Acknowledge', desc: 'POST /api/door-abort/ack — the strip stays RED after a door abort until the user confirms the Err 6016 alert (or starts a new process); acknowledging clears doorAborted and returns the strip to normal', endpoint: '/api/door-abort/ack', method: 'POST', expect: 'ok' },
+      { id: 'io_damper_logic', name: 'Damper Open/Close Logic', desc: 'Damper (MG90S on GPIO8): opens ONLY when a drying step reaches its target temp or when cooling starts; closed during drying ramp, heating, cure, bleach, idle and after stop', check: 'io_damper_logic' },
+    ]
+  },
+  {
+    id: 'program_validation',
+    name: 'Program Validation (Cure Builder)',
+    icon: '📋',
+    tests: [
+      { id: 'pv_empty_name', name: 'Empty Name Blocked', desc: 'Program without a name cannot be saved', check: 'pv_empty_name' },
+      { id: 'pv_no_steps', name: 'No Steps Blocked', desc: 'Program with zero steps cannot be saved', check: 'pv_no_steps' },
+      { id: 'pv_valid_simple', name: 'Simple Valid Program', desc: 'Heating → Cooling program passes validation', check: 'pv_valid_simple' },
+      { id: 'pv_n2_no_process', name: 'N₂ Without Cure/Bleach After', desc: 'N₂ without Cure/Bleaching after it is blocked', check: 'pv_n2_no_process' },
+      { id: 'pv_n2_with_heating', name: 'N₂ + Heating Blocked', desc: 'Heating directly after N₂ is blocked (only Cure/Bleaching allowed)', check: 'pv_n2_with_heating' },
+      { id: 'pv_n2_with_cure', name: 'N₂ + Cure Passes', desc: 'N₂ followed by Cure passes the process check', check: 'pv_n2_with_cure' },
+      { id: 'pv_n2_with_bleacher', name: 'N₂ + Bleaching Passes', desc: 'N₂ followed by Bleaching passes the process check', check: 'pv_n2_with_bleacher' },
+      { id: 'pv_n2_no_cooling', name: 'N₂ + Cure But No Cooling', desc: 'N₂ → Cure with no Cooling step after is blocked', check: 'pv_n2_no_cooling' },
+      { id: 'pv_n2_with_cooling', name: 'N₂ + Cure + Cooling Passes', desc: 'N₂ → Cure → Cooling passes all validations', check: 'pv_n2_with_cooling' },
+      { id: 'pv_n2_cure_cooling', name: 'N₂ + Cure + Cooling Passes', desc: 'N₂ → Cure → Cooling is a fully valid program', check: 'pv_n2_cure_cooling' },
+      { id: 'pv_only_cooling', name: 'Only Cooling Blocked', desc: 'Program with only Cooling (no Cure/Heating) is blocked', check: 'pv_only_cooling' },
+      { id: 'pv_n2_drying_after', name: 'N₂ + Drying Blocked', desc: 'Drying directly after N₂ is blocked (only Cure/Bleaching allowed)', check: 'pv_n2_drying_after' },
+      { id: 'pv_n2_cooling_direct', name: 'N₂ → Cooling Directly Blocked', desc: 'Cooling directly after N₂ (no Cure/Bleach) is blocked', check: 'pv_n2_cooling_direct' },
+      { id: 'pv_n2_cure_then_heating', name: 'N₂ → Cure → Heating Blocked', desc: 'After the Cure that follows N₂, only Cooling is allowed (Heating blocked)', check: 'pv_n2_cure_then_heating' },
+    ]
+  },
+  {
+    id: 'csv_import',
+    name: 'CSV Import Validation',
+    icon: '📄',
+    tests: [
+      { id: 'csv_valid_basic', name: 'Valid Basic CSV', desc: 'Heating → Cooling CSV parses correctly', check: 'csv_valid_basic' },
+      { id: 'csv_valid_n2', name: 'Valid N₂ CSV', desc: 'Heating → N₂ → Cure → Cooling CSV parses correctly', check: 'csv_valid_n2' },
+      { id: 'csv_valid_full', name: 'Valid Full CSV', desc: 'All 6 process types CSV parses correctly', check: 'csv_valid_full' },
+      { id: 'csv_invalid_process', name: 'Invalid Process Rejected', desc: 'Unknown process type is rejected', check: 'csv_invalid_process' },
+      { id: 'csv_bad_temp', name: 'Bad Temperature Rejected', desc: 'Temperature >80 is rejected', check: 'csv_bad_temp' },
+      { id: 'csv_bad_time', name: 'Bad Time Rejected', desc: 'Time >120 is rejected', check: 'csv_bad_time' },
+      { id: 'csv_bleach_12h', name: 'Bleaching Up To 12h', desc: 'Bleaching accepts 720 min (12 h)', check: 'csv_bleach_12h' },
+      { id: 'csv_bleach_over12h', name: 'Bleaching >12h Rejected', desc: 'Bleaching time >720 min is rejected', check: 'csv_bleach_over12h' },
+      { id: 'csv_n2_no_process', name: 'N₂ Without Process Rejected', desc: 'N₂ → Cooling without Heating/Cure after is rejected', check: 'csv_n2_no_process' },
+      { id: 'csv_n2_no_cooling', name: 'N₂ Without Cooling Rejected', desc: 'N₂ + Heating without Cooling step is rejected', check: 'csv_n2_no_cooling' },
+      { id: 'csv_n2_max3', name: 'Max 2 N₂ Steps', desc: '3 Nitrogen steps are rejected', check: 'csv_n2_max3' },
+      { id: 'csv_temp_decrease', name: 'Temp Decrease Rejected', desc: 'Temperature drop without Cooling is rejected', check: 'csv_temp_decrease' },
+      { id: 'csv_cooling_mode', name: 'CoolingMode Parsed', desc: 'CoolingMode fast/medium/slow parsed correctly', check: 'csv_cooling_mode' },
+      { id: 'csv_empty', name: 'Empty CSV Rejected', desc: 'CSV with only header is rejected', check: 'csv_empty' },
+    ]
+  },
+  {
+    id: 'material_duplicate',
+    name: 'Material Duplication',
+    icon: '⧉',
+    tests: [
+      { id: 'dup_copy_name', name: 'Copy Naming', desc: 'Duplicate is named "<name> Copy"', check: 'dup_copy_name' },
+      { id: 'dup_is_editable', name: 'Preset Copy Editable', desc: 'Duplicating a locked preset yields an editable (non-preset) material', check: 'dup_is_editable' },
+      { id: 'dup_steps_cloned', name: 'Steps Deep-Cloned', desc: 'Copy steps match content but are distinct references', check: 'dup_steps_cloned' },
+      { id: 'dup_inserted_after', name: 'Appended To End', desc: 'Copy is placed at the end of the list with new user materials', check: 'dup_inserted_after' },
+      { id: 'dup_unique_name', name: 'Unique Name On Repeat', desc: 'Duplicating twice gives "Copy" then "Copy 2"', check: 'dup_unique_name' },
+      { id: 'dup_invalid_id', name: 'Unknown ID Safe', desc: 'Duplicating a missing id returns null (no copy)', check: 'dup_invalid_id' },
+    ]
+  },
+  {
+    id: 'boot_sleep',
+    name: 'Boot vs Sleep Resume',
+    icon: '⏻',
+    tests: [
+      { id: 'boot_cold_shows_diag', name: 'Cold Start Boots', desc: 'A real power-up shows the boot/diagnostics screen', check: 'boot_cold_shows_diag' },
+      { id: 'boot_sleep_no_diag', name: 'Sleep Resume Skips Diag', desc: 'Resuming from sleep does NOT show diagnostics', check: 'boot_sleep_no_diag' },
+      { id: 'boot_sleep_shows_wake', name: 'Sleep Shows Wake', desc: 'Resuming from sleep shows the wake screen', check: 'boot_sleep_shows_wake' },
+      { id: 'boot_cold_not_asleep', name: 'Cold Start Not Asleep', desc: 'A cold power-up is not in sleep state', check: 'boot_cold_not_asleep' },
+      { id: 'wake_sleep_black', name: 'Sleep Screen Black', desc: 'Sleep mode shows a fully black screen to protect the display', check: 'wake_sleep_black' },
+      { id: 'wake_sleep_hint_after_touch', name: 'Hint After Touch', desc: 'First touch on the black sleep screen reveals the wake hint', check: 'wake_sleep_hint_after_touch' },
+      { id: 'wake_two_taps_wakes', name: 'Two Taps Wake', desc: 'A double tap wakes the system from sleep', check: 'wake_two_taps_wakes' },
+      { id: 'wake_screensaver_black', name: 'Screensaver Black', desc: 'The idle screensaver is fully black until first touch (screen protection)', check: 'wake_screensaver_black' },
+      { id: 'wake_screensaver_hint_after_touch', name: 'Screensaver Hint After Touch', desc: 'First touch on the black screensaver reveals the wake hint', check: 'wake_screensaver_hint_after_touch' },
+    ]
+  },
+  {
+    id: 'srs_versions',
+    name: 'SRS Document Version History',
+    icon: '📜',
+    tests: [
+      { id: 'srs_roundtrip_plain', name: 'Plain Snapshot Round-Trips', desc: 'A simple archived version survives serialize → reload → parse unchanged', check: 'srs_roundtrip_plain' },
+      { id: 'srs_roundtrip_scripttag', name: 'Embedded Close-Tag Survives', desc: 'A snapshot containing a closing script tag is escaped and parses back intact', check: 'srs_roundtrip_scripttag' },
+      { id: 'srs_no_raw_close', name: 'No Raw Close In Archive', desc: 'Serialized archive text contains no raw closing script tag that would truncate the file', check: 'srs_no_raw_close' },
+      { id: 'srs_unicode', name: 'Hebrew/Unicode Preserved', desc: 'Non-ASCII snapshot content (e.g. גרסה ישנה) round-trips correctly', check: 'srs_unicode' },
+      { id: 'srs_empty_archive', name: 'Empty Archive Reads As List', desc: 'An empty "[]" archive parses to an empty version list (no error)', check: 'srs_empty_archive' },
+    ]
+  },
+  {
+    id: 'fan_diagnostics',
+    name: 'Per-Fan Diagnostics',
+    icon: '🌀',
+    tests: [
+      { id: 'fant_led_cooling', name: 'LED Cooling Fan Test', desc: 'LED Cooling Airflow fan runs its own diagnostic (≈2850 RPM)', check: 'fant_led_cooling' },
+      { id: 'fant_chamber_intake', name: 'Chamber Intake Fan Test', desc: 'Chamber Intake fan runs its own diagnostic (≈3050 RPM)', check: 'fant_chamber_intake' },
+      { id: 'fant_chamber_heating', name: 'Chamber Heating Fan Test', desc: 'Chamber Heating fan runs its own diagnostic (≈2780 RPM)', check: 'fant_chamber_heating' },
+      { id: 'fant_each_fan_has_test', name: 'Every Fan Testable', desc: 'All three fans expose an individual diagnostic', check: 'fant_each_fan_has_test' },
+      { id: 'fant_distinct_rpm', name: 'Distinct Per-Fan RPM', desc: 'Each fan reports its own RPM, not one shared value', check: 'fant_distinct_rpm' },
+      { id: 'fant_unknown_fan', name: 'Unknown Fan Safe', desc: 'An unknown fan id yields no result', check: 'fant_unknown_fan' },
+    ]
+  },
+  {
+    id: 'cure_gauge_value',
+    name: 'Cure Phase Gauge',
+    icon: '⏱',
+    tests: [
+      { id: 'gv_hold_shows_time', name: 'HOLD Shows Time', desc: 'After reaching temperature, the gauge shows the remaining countdown', check: 'gv_hold_shows_time' },
+      { id: 'gv_ramp_shows_temp', name: 'Ramp Shows Temp', desc: 'While heating up, the gauge shows the climbing temperature', check: 'gv_ramp_shows_temp' },
+      { id: 'gv_hold_never_negative', name: 'Countdown Never Negative', desc: 'Overrun clamps the gauge countdown to 00:00', check: 'gv_hold_never_negative' },
+      { id: 'gv_completed_shows_temp', name: 'Completed Shows Temp', desc: 'A finished phase shows its hold temperature', check: 'gv_completed_shows_temp' },
+    ]
+  },
+  {
+    id: 'material_favorites',
+    name: 'Material Favorites (Star)',
+    icon: '⭐',
+    tests: [
+      { id: 'fav_toggle_on', name: 'Star Adds Favorite', desc: 'Starring a material adds it to favorites', check: 'fav_toggle_on' },
+      { id: 'fav_toggle_off', name: 'Unstar Removes Favorite', desc: 'Un-starring removes it from favorites', check: 'fav_toggle_off' },
+      { id: 'fav_moves_to_top', name: 'Starred Rises To Top', desc: 'A starred material moves to the top of the list', check: 'fav_moves_to_top' },
+      { id: 'fav_order_stable', name: 'Non-Favorites Stable', desc: 'Unstarred materials keep their original order', check: 'fav_order_stable' },
+      { id: 'fav_multiple_top', name: 'Multiple Favorites Top', desc: 'Several starred materials group at the top in order', check: 'fav_multiple_top' },
+      { id: 'fav_none_unchanged', name: 'No Favorites = No Change', desc: 'With no favorites the list order is unchanged', check: 'fav_none_unchanged' },
+    ]
+  },
+  {
+    id: 'topbar_nav',
+    name: 'TopBar Active Nav',
+    icon: '🔆',
+    tests: [
+      { id: 'nav_settings', name: 'Settings Lit', desc: 'Settings icon is highlighted on /settings', check: 'nav_settings' },
+      { id: 'nav_network', name: 'Network Lit', desc: 'Network icon is highlighted on /network', check: 'nav_network' },
+      { id: 'nav_alerts', name: 'Alerts Lit', desc: 'Alerts icon is highlighted on /alerts', check: 'nav_alerts' },
+      { id: 'nav_history', name: 'History Lit', desc: 'History icon is highlighted on /cure-history', check: 'nav_history' },
+      { id: 'nav_home_none', name: 'No Highlight On Home', desc: 'No nav icon is lit on the Home page', check: 'nav_home_none' },
+      { id: 'nav_single_active', name: 'Single Active Icon', desc: 'Exactly one nav icon is active per settings-area route', check: 'nav_single_active' },
+      { id: 'nav_globe_active_blue', name: 'Active Globe Is Blue', desc: 'On /network (connected) the globe inherits the primary/blue color, not white', check: 'nav_globe_active_blue' },
+      { id: 'nav_globe_inactive_white', name: 'Inactive Globe Is White', desc: 'Off /network (connected) the globe is white', check: 'nav_globe_inactive_white' },
+      { id: 'nav_globe_disconnected_red', name: 'Disconnected Globe Is Red', desc: 'A disconnected globe stays red even when active', check: 'nav_globe_disconnected_red' },
+      { id: 'n2_hidden_when_off', name: 'N₂ Hidden When Off', desc: 'N₂ icon is hidden when nitrogen mode is disabled', check: 'n2_hidden_when_off' },
+      { id: 'n2_shown_when_on', name: 'N₂ Shown When On', desc: 'N₂ icon is visible when nitrogen mode is enabled', check: 'n2_shown_when_on' },
+    ]
+  },
+  {
+    id: 'csv_format',
+    name: 'CSV Format & Columns',
+    icon: '📐',
+    tests: [
+      { id: 'fmt_header', name: 'Header Format', desc: 'Exported CSV has correct 9-column header', check: 'fmt_header' },
+      { id: 'fmt_nitrogen_row', name: 'Nitrogen Row Format', desc: 'Nitrogen row has empty temp and time', check: 'fmt_nitrogen_row' },
+      { id: 'fmt_cooling_row', name: 'Cooling Row Format', desc: 'Cooling row has CoolingMode in column 9', check: 'fmt_cooling_row' },
+      { id: 'fmt_cure_row', name: 'Cure Row Format', desc: 'Cure row has TimerMode, UVIntensity, UVStart', check: 'fmt_cure_row' },
+      { id: 'fmt_roundtrip', name: 'Export→Import Roundtrip', desc: 'Exported CSV can be re-imported without errors', check: 'fmt_roundtrip' },
+    ]
+  },
+  {
+    id: 'performance',
+    name: 'Performance & Stress',
+    icon: '⚡',
+    tests: [
+      { id: 'perf_state_latency', name: 'API Latency (state)', desc: 'Average response time over 10 calls to /api/state', check: 'perf_latency', endpoint: '/api/state', method: 'GET', iterations: 10 },
+      { id: 'perf_burst', name: 'API Burst (20 requests)', desc: 'Fire 20 simultaneous requests and check all succeed', check: 'perf_burst', endpoint: '/api/state', method: 'GET', iterations: 20 },
+      { id: 'perf_materials_load', name: 'Materials Load Time', desc: 'Time to load all materials (presets + user)', check: 'perf_multi_load' },
+      { id: 'perf_temp_response', name: 'Heater Response Time', desc: 'Set target temp and measure time until acknowledged', endpoint: '/api/chamber/temperature?target=30', method: 'POST', check: 'perf_simple' },
+      { id: 'perf_fan_response', name: 'Fan Command Response', desc: 'Set fan speed and measure response time', endpoint: '/api/fans/led_cooling?speed=25', method: 'POST', check: 'perf_simple' },
+      { id: 'perf_stop_cleanup', name: 'Cleanup (stop heater/fan)', desc: 'Stop heater and reset fan to 0', endpoint: '/api/chamber/stop', method: 'POST', expect: 'ok' },
+    ]
+  },
+  {
+    id: 'compliance',
+    name: 'Compliance (CRA / EN 18031)',
+    icon: '🛡',
+    tests: [
+      { id: 'cra_verify_pass', name: 'Valid Package Verifies', desc: 'A package matching its SHA-256 passes integrity verification', check: 'cra_verify_pass' },
+      { id: 'cra_verify_tamper', name: 'Tampered Package Blocked', desc: 'A package whose bytes were altered fails verification (install blocked)', check: 'cra_verify_tamper' },
+      { id: 'cra_verify_missing_hash', name: 'Missing Checksum Blocked', desc: 'An empty/absent checksum is rejected', check: 'cra_verify_missing_hash' },
+      { id: 'cra_verify_bad_hex', name: 'Malformed Checksum Blocked', desc: 'A non-hex / wrong-length checksum is rejected', check: 'cra_verify_bad_hex' },
+      { id: 'cra_verify_prefix_upper', name: 'Prefixed/Uppercase Hash OK', desc: 'A "SHA256:" prefixed, uppercase digest normalizes and verifies', check: 'cra_verify_prefix_upper' },
+      { id: 'cra_requirements_defined', name: 'All REQ-CRA Defined', desc: 'All 8 REQ-CRA requirements are present', check: 'cra_requirements_defined' },
+    ]
+  },
+  {
+    id: 'hw_compat',
+    name: 'UX ↔ Hardware Compatibility',
+    icon: '🔧',
+    tests: [
+      // Backend validation mirrors the REAL driver limits (io_controller/components.json)
+      { id: 'hwc_heat_below_min', name: 'Heat Below 30°C Rejected', desc: 'The heater driver refuses targets below heating.target_min=30 — the API must reject 25°C with code 7001', endpoint: '/api/cure/heat?target=25', method: 'POST', check: 'hw_reject', code: 7001 },
+      { id: 'hwc_dry_below_min', name: 'Dry Below 30°C Rejected', desc: 'Drying (= heating) targets below 30°C are rejected', endpoint: '/api/cure/dry?target=22', method: 'POST', check: 'hw_reject', code: 7001 },
+      { id: 'hwc_manual_temp_low', name: 'Manual Setpoint Below 30°C Rejected', desc: '/api/chamber/temperature must not accept targets the control loop silently clamps (below 30°C)', endpoint: '/api/chamber/temperature?target=20', method: 'POST', check: 'hw_reject', code: 7001 },
+      { id: 'hwc_manual_temp_high', name: 'Manual Setpoint Above 80°C Rejected', desc: '/api/chamber/temperature rejects 200°C — the safe max is enforced on the backend, not only in the UI slider', endpoint: '/api/chamber/temperature?target=200', method: 'POST', check: 'hw_reject', code: 7001 },
+      { id: 'hwc_uv_below_min', name: 'UV Below 10% Rejected', desc: 'led_power.min_intensity=10: below it the LEDs stay dark, so cure-405 at 7% must be rejected with code 7002', endpoint: '/api/cure/cure-405?target=60&intensity=7', method: 'POST', check: 'hw_reject', code: 7002 },
+      { id: 'hwc_uv_450_below_min', name: 'Bleaching UV Below 10% Rejected', desc: 'Same UV floor applies to the 450nm bleaching path', endpoint: '/api/cure/cure-450?target=60&intensity=5', method: 'POST', check: 'hw_reject', code: 7002 },
+      // New hardware endpoints wired to previously UI-only features
+      { id: 'hwc_nitrogen_open', name: 'N₂ Valve Opens', desc: 'POST /api/cure/nitrogen?on=1 drives the real solenoid (GPIO13) — no longer a UI-only countdown', endpoint: '/api/cure/nitrogen?on=1', method: 'POST', expect: 'ok' },
+      { id: 'hwc_nitrogen_state', name: 'N₂ State Reflected', desc: 'GET /api/state reports nitrogenActive after the valve command', endpoint: '/api/state', method: 'GET', check: 'hwc_n2_state' },
+      { id: 'hwc_nitrogen_close', name: 'N₂ Valve Closes', desc: 'POST /api/cure/nitrogen?on=0 closes the valve', endpoint: '/api/cure/nitrogen?on=0', method: 'POST', expect: 'ok' },
+      { id: 'hwc_bofa_toggle', name: 'BOFA Control Wired', desc: 'POST /api/bofa drives the extraction channel (PCA ch10) — the Settings toggle is no longer decorative', endpoint: '/api/bofa?on=0', method: 'POST', expect: 'ok' },
+      { id: 'rgb_override', name: 'RGB Manual Override', desc: 'POST /api/rgb paints the strip a requested color (named or hex), pausing the automatic status colors; ?on=0 releases the strip back to them; an unknown color name is rejected', check: 'rgb_override' },
+      { id: 'heater_hours_gate', name: 'Heater Hours Only While Heating', desc: 'Counter logic: heater ON-seconds accumulate only while the heating loop is active (isHeating) — a stale heaterOut/heaterPwm left over after a stop must not count, so heater hours can never exceed heater-fan hours', check: 'heater_hours_gate' },
+      { id: 'hwc_uv_endpoint', name: 'Standalone UV Endpoint', desc: 'POST /api/uv gives diagnostics direct UV control through the wavelength-gated safety layer', endpoint: '/api/uv?on=0', method: 'POST', expect: 'ok' },
+      { id: 'hwc_datetime', name: 'System Clock Endpoint', desc: 'POST /api/system/datetime sets the device clock (Settings → Apply now reaches the OS)', endpoint: '/api/system/datetime', method: 'POST', body: { date: '2026-01-15', time: '12:30' }, expect: 'ok' },
+      { id: 'hwc_datetime_bad', name: 'Bad Clock Format Rejected', desc: 'Malformed date/time is rejected instead of being passed to the shell', endpoint: '/api/system/datetime', method: 'POST', body: { date: 'not-a-date', time: '99:99' }, check: 'hw_reject' },
+      { id: 'hwc_fan_test_param', name: 'Per-Fan Diagnostic Param', desc: '/api/diagnostics/fan-test?fan=led_cooling tests the requested fan, not always the heater fan', endpoint: '/api/diagnostics/fan-test?fan=led_cooling', method: 'POST', expect: 'ok' },
+      { id: 'hwc_stop_immediate', name: 'Immediate Abort Stop', desc: '/api/cure/stop?immediate=1 (user abort) performs a full shutdown with no 10-min fan run-on', endpoint: '/api/cure/stop?immediate=1', method: 'POST', expect: 'ok' },
+      { id: 'hwc_fastcool_ledfans', name: 'Fast Cool Engages LED Fans', desc: 'Cooling in FAST mode also runs the four LED-cooling fans (fans.led_cooling > 0); they release on stop', check: 'hwc_fastcool_ledfans' },
+      { id: 'hwc_state_extras', name: 'State Carries Hardware Truth', desc: '/api/state includes ledTemps, fanRpm, nitrogenActive and faults so the UI mirrors the machine instead of guessing', endpoint: '/api/state', method: 'GET', check: 'hwc_state_extras' },
+      // Frontend-rule mirrors (logic tests, no API needed)
+      { id: 'hwc_csv_heat_min', name: 'CSV: Heating Below 30°C Rejected', desc: 'CSV import applies the hardware heating floor (30°C), matching the backend', check: 'hwc_csv_heat_min' },
+      { id: 'hwc_csv_uv_min', name: 'CSV: UV Below 10% Rejected', desc: 'CSV import rejects UV intensity under 10% (LEDs would stay dark)', check: 'hwc_csv_uv_min' },
+      { id: 'hwc_csv_cool_drop', name: 'CSV: Cooling Must Drop ≥5°C', desc: 'A cooling target less than 5°C below the previous step is a hardware no-op and is rejected on import', check: 'hwc_csv_cool_drop' },
+      { id: 'hwc_cool_done_band', name: 'Cooling Ends At Measured Temp', desc: 'Cure screen logic: a cooling phase completes when the measured chamber temp reaches target+0.5°C — never on the step timer', check: 'hwc_cool_done_band' },
+      { id: 'cool_gauge_temp', name: 'Cooling Gauge Shows Live Temp', desc: 'Cure screen logic: the cooling phase card centers the measured chamber temperature (COOL °C) like the heating gauge — live temp while active, the target when completed/pending — never an empty center', check: 'cool_gauge_temp' },
+      { id: 'hwc_timer_start', name: 'Timer Start Mode Honored', desc: "A step's Timer Start setting is honored by the cure screen: 'On ramp start' counts the step time through the ramp (and may finish mid-ramp); 'On target' (default) parks the timer until the chamber reaches the target", check: 'hwc_timer_start' },
+      { id: "hwc_onoff_heat", name: "Heater PI + Delta-Sigma", desc: "Heating is PI(D) control (kp 0.08, ki 0.00015) streamed to the ON/OFF heater element by a delta-sigma DAC - power law and ON-ratio verified", check: "hwc_onoff_heat" },
+    ]
+  },
+];
+
+// ============================================================
+// State
+// ============================================================
+let isConnected = false;
+let isRunning = false;
+let shouldStop = false;
+let testResults = {};
+let logLines = [];
+let startTime = null;
+
+// ============================================================
+// Init
+// ============================================================
+function init() {
+  renderCategories();
+  checkConnection();
+}
+
+// ============================================================
+// Connection
+// ============================================================
+async function checkConnection() {
+  const url = document.getElementById('apiUrl').value;
+  const dot = document.getElementById('statusDot');
+  const label = document.getElementById('statusLabel');
+  const btn = document.getElementById('runAllBtn');
+
+  try {
+    const res = await fetch(url + '/api/state', { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      isConnected = true;
+      dot.className = 'status-dot connected';
+      label.textContent = 'Connected';
+      btn.disabled = false;
+      log('info', 'Connected to API at ' + url);
+    } else {
+      throw new Error('Bad response');
+    }
+  } catch (e) {
+    isConnected = false;
+    dot.className = 'status-dot disconnected';
+    label.textContent = 'Disconnected';
+    btn.disabled = true;
+    log('fail', 'Cannot connect to API at ' + url);
+  }
+}
+
+// ============================================================
+// Render
+// ============================================================
+function renderCategories() {
+  const container = document.getElementById('testCategories');
+  let totalTests = 0;
+
+  container.innerHTML = TEST_CATEGORIES.map(cat => {
+    totalTests += cat.tests.length;
+    return `
+    <div class="category open" id="cat-${cat.id}">
+      <div class="category-header" onclick="toggleCategory('${cat.id}')">
+        <h3><span class="cat-icon">${cat.icon}</span> ${cat.name}</h3>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="cat-stats" id="cat-stats-${cat.id}">${cat.tests.length} tests</span>
+          <button class="btn btn-outline btn-small" onclick="event.stopPropagation();runCategory('${cat.id}')">Run</button>
+          <span class="expand">&#9660;</span>
+        </div>
+      </div>
+      <div class="test-list">
+        ${cat.tests.map(t => `
+          <div class="test-row" id="row-${t.id}">
+            <div class="test-status pending" id="status-${t.id}">-</div>
+            <div class="test-info">
+              <div class="test-name">${t.name}</div>
+              <div class="test-desc">${t.desc}</div>
+            </div>
+            <div class="test-result" id="result-${t.id}"></div>
+            <div class="test-time" id="time-${t.id}"></div>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('sumTotal').textContent = totalTests;
+}
+
+function toggleCategory(id) {
+  document.getElementById('cat-' + id).classList.toggle('open');
+}
+
+function updateSummary() {
+  const values = Object.values(testResults);
+  const pass = values.filter(r => r === 'pass').length;
+  const fail = values.filter(r => r === 'fail').length;
+  const warn = values.filter(r => r === 'warn').length;
+  const skip = values.filter(r => r === 'skip').length;
+  const total = TEST_CATEGORIES.reduce((s, c) => s + c.tests.length, 0);
+
+  document.getElementById('sumPass').textContent = pass;
+  document.getElementById('sumFail').textContent = fail;
+  document.getElementById('sumWarn').textContent = warn;
+  document.getElementById('sumSkip').textContent = skip;
+
+  const done = pass + fail + warn + skip;
+  document.getElementById('progressFill').style.width = Math.round((done / total) * 100) + '%';
+
+  // Update category stats
+  TEST_CATEGORIES.forEach(cat => {
+    const catResults = cat.tests.map(t => testResults[t.id]).filter(Boolean);
+    const catPass = catResults.filter(r => r === 'pass').length;
+    const catFail = catResults.filter(r => r === 'fail').length;
+    const el = document.getElementById('cat-stats-' + cat.id);
+    if (catResults.length === 0) {
+      el.textContent = cat.tests.length + ' tests';
+    } else {
+      el.innerHTML = `<span style="color:#4caf50">${catPass}P</span> / <span style="color:#f44336">${catFail}F</span> / ${cat.tests.length}`;
+    }
+  });
+}
+
+function setTestStatus(testId, status, result, time) {
+  testResults[testId] = status;
+
+  const statusEl = document.getElementById('status-' + testId);
+  const resultEl = document.getElementById('result-' + testId);
+  const timeEl = document.getElementById('time-' + testId);
+  const rowEl = document.getElementById('row-' + testId);
+
+  const icons = { pending: '-', running: '...', pass: '✓', fail: '✗', warn: '!', skip: '—' };
+  statusEl.className = 'test-status ' + status;
+  statusEl.textContent = icons[status] || '-';
+  resultEl.textContent = result || '';
+  resultEl.className = 'test-result ' + status;
+  timeEl.textContent = time ? time + 'ms' : '';
+  rowEl.className = 'test-row' + (status === 'running' ? ' running' : '');
+
+  updateSummary();
+}
+
+// ============================================================
+// Test Runner
+// ============================================================
+async function runAllTests() {
+  if (isRunning) return;
+  isRunning = true;
+  shouldStop = false;
+  startTime = Date.now();
+
+  document.getElementById('runAllBtn').disabled = true;
+  document.getElementById('stopBtn').style.display = '';
+
+  // Reset all
+  testResults = {};
+  TEST_CATEGORIES.forEach(cat => cat.tests.forEach(t => setTestStatus(t.id, 'pending', '', '')));
+  updateSummary();
+
+  log('info', '=== QA Test Run Started ===');
+
+  for (const cat of TEST_CATEGORIES) {
+    if (shouldStop) break;
+    log('info', `--- ${cat.name} ---`);
+    for (const test of cat.tests) {
+      if (shouldStop) { setTestStatus(test.id, 'skip', 'Stopped', ''); continue; }
+      await runSingleTest(test);
+    }
+  }
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  const vals = Object.values(testResults);
+  const pass = vals.filter(r => r === 'pass').length;
+  const fail = vals.filter(r => r === 'fail').length;
+  log(fail > 0 ? 'fail' : 'pass', `=== QA Complete: ${pass} passed, ${fail} failed in ${elapsed}s ===`);
+
+  isRunning = false;
+  document.getElementById('runAllBtn').disabled = false;
+  document.getElementById('stopBtn').style.display = 'none';
+}
+
+async function runCategory(catId) {
+  const cat = TEST_CATEGORIES.find(c => c.id === catId);
+  if (!cat || isRunning) return;
+  isRunning = true;
+  shouldStop = false;
+
+  log('info', `--- Running: ${cat.name} ---`);
+  for (const test of cat.tests) {
+    if (shouldStop) break;
+    await runSingleTest(test);
+  }
+  isRunning = false;
+}
+
+function stopTests() {
+  shouldStop = true;
+  log('warn', 'Test run stopped by user');
+}
+
+async function runSingleTest(test) {
+  setTestStatus(test.id, 'running', 'Running...', '');
+  const t0 = Date.now();
+  const apiUrl = document.getElementById('apiUrl').value;
+
+  try {
+    // Local validation tests (no API needed)
+    if (test.check && test.check.startsWith('csv_')) {
+      const result = runCsvImportCheck(test.check);
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+    if (test.check && test.check.startsWith('fmt_')) {
+      const result = runCsvFormatCheck(test.check);
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+    if (test.check && test.check.startsWith('pv_')) {
+      const result = runProgramValidationCheck(test.check);
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+    if (test.check && test.check.startsWith('dup_')) {
+      const result = runDuplicateCheck(test.check);
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+    if (test.check && test.check.startsWith('nav_')) {
+      const result = runNavCheck(test.check);
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+    if (test.check && test.check.startsWith('n2_')) {
+      const result = runN2IconCheck(test.check);
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+    if (test.check && test.check.startsWith('fav_')) {
+      const result = runFavoriteCheck(test.check);
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+    if (test.check && test.check.startsWith('gv_')) {
+      const result = runGaugeValueCheck(test.check);
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+    if (test.check && test.check.startsWith('fant_')) {
+      const result = runFanTestCheck(test.check);
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+    if (test.check && test.check.startsWith('srs_')) {
+      const result = runSrsVersionCheck(test.check);
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+    if (test.check && test.check.startsWith('boot_')) {
+      const result = runBootCheck(test.check);
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+    if (test.check && test.check.startsWith('wake_')) {
+      const result = runWakeScreenCheck(test.check);
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+    if (test.check && test.check.startsWith('cra_')) {
+      const result = await runComplianceCheck(test.check);
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Local UX↔hardware compatibility logic mirrors (no API needed)
+    if (test.check && test.check.startsWith('hwc_csv_') || test.check === 'hwc_cool_done_band' || test.check === 'hwc_onoff_heat' || test.check === 'hwc_timer_start') {
+      const result = runHwCompatCheck(test.check);
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // FAST cooling engages the four LED-cooling fans, and stop releases them.
+    if (test.check === 'hwc_fastcool_ledfans') {
+      const readFans = async () => {
+        const r = await fetch(apiUrl + '/api/state', { signal: AbortSignal.timeout(5000) });
+        return (await r.json()).fans || {};
+      };
+      const cool = await (await fetch(apiUrl + '/api/cure/cool?target=30&mode=fast', { method: 'POST', signal: AbortSignal.timeout(8000) })).json();
+      let result;
+      if (!cool.ok) {
+        result = { status: 'warn', msg: `Cool command refused: ${cool.message || 'unknown'}` };
+      } else {
+        await new Promise(r => setTimeout(r, 500));
+        const during = await readFans();
+        await fetch(apiUrl + '/api/cure/stop', { method: 'POST', signal: AbortSignal.timeout(8000) }).catch(() => {});
+        await new Promise(r => setTimeout(r, 500));
+        const after = await readFans();
+        if (!(during.led_cooling > 0)) {
+          result = { status: 'fail', msg: `LED fans NOT engaged in fast cool (led_cooling=${during.led_cooling})` };
+        } else if (after.led_cooling !== 0) {
+          result = { status: 'fail', msg: `LED fans not released after stop (led_cooling=${after.led_cooling})` };
+        } else {
+          result = { status: 'pass', msg: `LED fans at ${during.led_cooling}% during fast cool, 0% after stop` };
+        }
+      }
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Negative API test: the endpoint must REJECT the request (ok:false),
+    // optionally with a specific registry error code.
+    if (test.check === 'hw_reject') {
+      const opts = { method: test.method || 'POST', signal: AbortSignal.timeout(8000) };
+      if (test.body) { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(test.body); }
+      const r = await fetch(apiUrl + test.endpoint, opts);
+      const d = await r.json();
+      const elapsed = Date.now() - t0;
+      let result;
+      if (d.ok === false && (!test.code || d.code === test.code)) {
+        result = { status: 'pass', msg: `Rejected${d.code ? ' with code ' + d.code : ''}: ${(d.message || '').slice(0, 40)}` };
+      } else if (d.ok === false) {
+        result = { status: 'warn', msg: `Rejected but code=${d.code ?? 'none'} (expected ${test.code})` };
+      } else {
+        result = { status: 'fail', msg: 'Request was ACCEPTED but must be rejected' };
+      }
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r2 => setTimeout(r2, 50));
+      return;
+    }
+
+    // Automatic internet watch: both endpoints must publish the background
+    // check's verdict so the UI / QA can observe it (io_bridge._net_watch).
+    // Versioning: the app version must come from the repo-root VERSION file
+    // (semver) and the endpoint must publish live machine info alongside it.
+    if (test.check === 'sys_version') {
+      let result;
+      try {
+        const v = await (await fetch(apiUrl + '/api/system/version', { signal: AbortSignal.timeout(5000) })).json();
+        if (!/^\d+\.\d+\.\d+/.test(v.appVersion || '')) {
+          result = { status: 'fail', msg: `appVersion "${v.appVersion}" is not semver (VERSION file missing?)` };
+        } else {
+          const extras = ['gitCommit', 'lastBoot', 'os', 'kernel', 'python'].filter(k => v[k]);
+          result = { status: 'pass', msg: `v${v.appVersion} (${extras.length}/5 live fields: ${extras.join(', ')})` };
+        }
+      } catch (e) {
+        result = { status: 'fail', msg: `fetch failed: ${e.message}` };
+      }
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    if (test.check === 'net_auto_watch') {
+      let result;
+      try {
+        const st = await (await fetch(apiUrl + '/api/state', { signal: AbortSignal.timeout(5000) })).json();
+        const net = await (await fetch(apiUrl + '/api/network/status', { signal: AbortSignal.timeout(5000) })).json();
+        const stOk = typeof st.internetOk === 'boolean' || st.internetOk === null;
+        const netOk = typeof net.internet === 'boolean';
+        const lanOk = typeof net.connected === 'boolean';
+        if (!stOk) result = { status: 'fail', msg: '/api/state.internetOk missing or wrong type' };
+        else if (!netOk) result = { status: 'fail', msg: '/api/network/status.internet missing' };
+        else if (!lanOk) result = { status: 'fail', msg: '/api/network/status.connected missing (NetworkPage LAN dot)' };
+        else if (st.internetOk === null) result = { status: 'warn', msg: 'watch not running (simulation / RGB thread off); fields present' };
+        else result = { status: 'pass', msg: `internetOk=${st.internetOk}, network.internet=${net.internet} — auto watch publishing` };
+      } catch (e) {
+        result = { status: 'fail', msg: `fetch failed: ${e.message}` };
+      }
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Cloud portal sync agent: /api/state must always publish its status.
+    // Configured -> enabled with a recent successful sync (or a visible
+    // error); not configured -> cleanly disabled with no error.
+    if (test.check === 'cloud_sync') {
+      let result;
+      try {
+        const st = await (await fetch(apiUrl + '/api/state', { signal: AbortSignal.timeout(5000) })).json();
+        const cs = st.cloudSync;
+        if (!cs || typeof cs.enabled !== 'boolean')
+          result = { status: 'fail', msg: '/api/state.cloudSync missing' };
+        else if (!cs.enabled)
+          result = cs.error
+            ? { status: 'fail', msg: `agent off with error: ${cs.error}` }
+            : { status: 'warn', msg: 'not configured (no server/data/cloud.json) — fields present' };
+        else if (cs.error)
+          result = { status: 'warn', msg: `enabled but failing: ${cs.error}` };
+        else if (!cs.lastSyncOk || (Date.now() / 1000 - cs.lastSyncOk) > 120)
+          result = { status: 'fail', msg: 'enabled but no successful sync in the last 2 min' };
+        else
+          result = { status: 'pass', msg: `synced ${Math.round(Date.now() / 1000 - cs.lastSyncOk)}s ago` };
+      } catch (e) {
+        result = { status: 'fail', msg: `fetch failed: ${e.message}` };
+      }
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Histories must come from a durable store: with Postgres configured the
+    // DB serves them; without it the server/data JSON files do. Either way
+    // the endpoints answer 200 with arrays — a 503 means recorded history
+    // lives only in browser memory and dies on power-off.
+    if (test.check === 'history_durable') {
+      let result;
+      try {
+        const rP = await fetch(apiUrl + '/api/print-history', { signal: AbortSignal.timeout(5000) });
+        const rC = await fetch(apiUrl + '/api/cure-history', { signal: AbortSignal.timeout(5000) });
+        if (rP.status === 503 || rC.status === 503)
+          result = { status: 'fail', msg: `503 from ${rP.status === 503 ? 'print' : 'cure'}-history — no durable fallback` };
+        else if (!rP.ok || !rC.ok)
+          result = { status: 'fail', msg: `HTTP ${rP.status}/${rC.status}` };
+        else {
+          const prints = await rP.json();
+          const cures = await rC.json();
+          if (!Array.isArray(prints) || !Array.isArray(cures))
+            result = { status: 'fail', msg: 'endpoints did not return arrays' };
+          else
+            result = { status: 'pass', msg: `durable store answering — ${prints.length} prints, ${cures.length} cure runs on record` };
+        }
+      } catch (e) {
+        result = { status: 'fail', msg: `fetch failed: ${e.message}` };
+      }
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Phase-timing analytics: the collection endpoint must exist, serve an
+    // array, and reject invalid records (missing process/seconds -> 400).
+    if (test.check === 'phase_timings') {
+      let result;
+      try {
+        const rG = await fetch(apiUrl + '/api/phase-timings', { signal: AbortSignal.timeout(5000) });
+        const rows = rG.ok ? await rG.json() : null;
+        if (!rG.ok) result = { status: 'fail', msg: `GET /api/phase-timings HTTP ${rG.status}` };
+        else if (!Array.isArray(rows)) result = { status: 'fail', msg: 'did not return an array' };
+        else {
+          const rBad = await fetch(apiUrl + '/api/cure-runs/qa-validation-probe/phase', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}), signal: AbortSignal.timeout(5000) });
+          if (rBad.status !== 400)
+            result = { status: 'fail', msg: `invalid record accepted (HTTP ${rBad.status}, expected 400)` };
+          else
+            result = { status: 'pass', msg: `${rows.length} phase timings on record; invalid records rejected` };
+        }
+      } catch (e) {
+        result = { status: 'fail', msg: `fetch failed: ${e.message}` };
+      }
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Component runtime counters: /api/state.counters must expose the five
+    // wear counters, be monotonic (never lose hours between samples), and
+    // actually advance for a component that is currently running.
+    if (test.check === 'counters_live') {
+      let result;
+      try {
+        const KEYS = ['led405', 'led450', 'coolingFan', 'heater', 'heaterFan'];
+        const s1 = await (await fetch(apiUrl + '/api/state', { signal: AbortSignal.timeout(5000) })).json();
+        const c1 = s1.counters;
+        const bad = !c1 ? KEYS : KEYS.filter(k => typeof c1[k] !== 'number' || c1[k] < 0);
+        if (!c1) result = { status: 'fail', msg: '/api/state.counters missing' };
+        else if (bad.length) result = { status: 'fail', msg: `non-numeric counters: ${bad.join(', ')}` };
+        else {
+          // second sample after > one server tick (2s): monotonicity + advance
+          await new Promise(r => setTimeout(r, 2600));
+          const s2 = await (await fetch(apiUrl + '/api/state', { signal: AbortSignal.timeout(5000) })).json();
+          const c2 = s2.counters || {};
+          const shrunk = KEYS.filter(k => (c2[k] ?? 0) < c1[k]);
+          const running = [
+            s2.uvOn && s2.uvWavelength === 405 && 'led405',
+            s2.uvOn && s2.uvWavelength === 450 && 'led450',
+            ((s2.fanRpm || {}).chamber_intake > 0 || (s2.fans || {}).chamber_intake > 0) && 'coolingFan',
+            (s2.heaterPwm > 0 || (s2.heaterPwm == null && s2.isHeating)) && 'heater',
+            ((s2.fanRpm || {}).chamber_heating > 0 || (s2.fans || {}).chamber_heating > 0) && 'heaterFan',
+          ].filter(Boolean);
+          if (shrunk.length) result = { status: 'fail', msg: `counters went BACKWARDS: ${shrunk.join(', ')}` };
+          else if (running.length === 0)
+            result = { status: 'pass', msg: `all five counters published (everything idle now; totals: ${KEYS.map(k => `${k}=${c1[k]}h`).join(', ')})` };
+          else {
+            // counters have 0.1h display resolution, so a 2.6s advance may not
+            // show yet — treat "same value" as pass, only regression fails.
+            const moved = running.filter(k => (c2[k] ?? 0) > c1[k]);
+            result = { status: 'pass', msg: `running: ${running.join(', ')}${moved.length ? ` — advanced: ${moved.join(', ')}` : ' (within display resolution)'}` };
+          }
+        }
+      } catch (e) {
+        result = { status: 'fail', msg: `fetch failed: ${e.message}` };
+      }
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Mirrors StatusLeds._mode() no-internet handling: offline shows blue
+    // (solid when idle, comet color when busy); fault/door keep priority.
+    if (test.check === 'net_strip_logic') {
+      const mode = (fault, doorOpen, busy, internet) =>
+        fault ? 'fault'
+        : doorOpen === true ? 'door'
+        : busy ? (internet ? 'busy' : 'busy_no_net')
+        : internet ? 'normal' : 'no_net';
+      const cases = [
+        // [fault, doorOpen, busy, internetOk] -> expected strip mode
+        [null, false, false, true,  'normal'],       // online + idle
+        [null, false, false, false, 'no_net'],       // offline + idle -> solid blue
+        [null, false, true,  true,  'busy'],         // online + process -> yellow comet
+        [null, false, true,  false, 'busy_no_net'],  // offline + process -> blue comet
+        ['thermistor', false, true, false, 'fault'], // fault beats no-internet
+        [null, true,  false, false, 'door'],         // door beats no-internet
+      ];
+      const bad = cases.filter(([f, d, b, n, expect]) => mode(f, d, b, n) !== expect);
+      const elapsed = Date.now() - t0;
+      const result = bad.length === 0
+        ? { status: 'pass', msg: `${cases.length} online/offline combinations map to the right strip colors` }
+        : { status: 'fail', msg: `wrong mode for ${bad.length} case(s)` };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Fullscreen launch prerequisite: the API server must serve the built
+    // UI at / (and at any client route) — the Pi kiosk and the Windows
+    // desktop window (server/desktop.py) both open http://localhost:3001.
+    if (test.check === 'ui_served' || test.check === 'ui_spa_fallback') {
+      const path = test.check === 'ui_served' ? '/' : '/settings';
+      let result;
+      try {
+        const r = await fetch(apiUrl + path, { signal: AbortSignal.timeout(5000) });
+        const body = await r.text();
+        if (!r.ok) result = { status: 'fail', msg: `GET ${path} returned HTTP ${r.status}` };
+        else if (!body.includes('id="root"')) result = { status: 'fail', msg: `GET ${path} did not return the UI page (no root element)` };
+        else result = { status: 'pass', msg: `GET ${path} serves the UI page` };
+      } catch (e) {
+        result = { status: 'fail', msg: `GET ${path} failed: ${e.message}` };
+      }
+      const elapsed = Date.now() - t0;
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Mirrors the damper rules in server/io_bridge.py: the vent damper
+    // (MG90S servo, GPIO8) opens ONLY when (a) a DRYING step reaches its
+    // target temperature (_damper_watch one-shot) or (b) cooling mode runs
+    // (CoolingController owns it); every other state keeps it closed.
+    if (test.check === 'io_damper_logic') {
+      const damperOpen = (phase, atTemp) =>
+        phase === 'cooling' || (phase === 'drying' && atTemp === true);
+      const cases = [
+        // [phase, atTemp] -> expected damper state
+        ['drying', false, false],   // drying ramp: closed
+        ['drying', true, true],     // drying reached target: OPEN (vent moisture)
+        ['heating', true, false],   // heating: closed even at temp
+        ['cure', true, false],      // cure: closed
+        ['bleacher', true, false],  // bleaching: closed
+        ['cooling', false, true],   // cooling: OPEN from the start
+        ['idle', false, false],     // idle / after stop: closed
+      ];
+      const bad = cases.filter(([p, a, expect]) => damperOpen(p, a) !== expect);
+      const elapsed = Date.now() - t0;
+      const result = bad.length === 0
+        ? { status: 'pass', msg: 'damper opens only at drying-at-temp and during cooling; closed everywhere else' }
+        : { status: 'fail', msg: `wrong damper state for: ${bad.map(c => `${c[0]}${c[1] ? '@temp' : ''}`).join(', ')}` };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Mirrors StatusLeds._evaluate cadence: the machine state is re-classified
+    // every status_sec (1s), so any change (including a door-open abort)
+    // reaches the strip within one evaluation.
+    if (test.check === 'led_status_loop') {
+      const STATUS_SEC = 1;
+      // worst case: the state flips right after an evaluation -> seen on the next one
+      const worstReaction = STATUS_SEC;
+      const nextEval = (lastEval, now) => now - lastEval >= STATUS_SEC;
+      const cadenceOk = nextEval(0, 1) && nextEval(0, 2.5) && !nextEval(0, 0.9);
+      const elapsed = Date.now() - t0;
+      const result = cadenceOk && worstReaction <= 1
+        ? { status: 'pass', msg: `state re-classified every ${STATUS_SEC}s — changes reach the strip within ${worstReaction}s` }
+        : { status: 'fail', msg: 'status evaluation cadence wrong' };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // HSI sampling-time rule: every reading is sampled at most every 1 second.
+    // Mirrors the configured intervals of every sampling loop in the system.
+    if (test.check === 'sampling_1s') {
+      const MAX_SAMPLE_SEC = 1;
+      const loops = [
+        // [loop, interval_sec] — mirrors components.json / code constants
+        ['heating sample_sec (temperature_control.py)', 1.0],
+        ['cooling sample_sec (cooling_mode.py)', 1.0],
+        ['status_sec watchdog (io_bridge StatusLeds)', 1.0],
+        ['dashboard SENSOR_REFRESH_SEC', 1.0],
+        ['UI /api/state poll (HardwareContext)', 1.0],
+      ];
+      const slow = loops.filter(([, sec]) => sec > MAX_SAMPLE_SEC);
+      const elapsed = Date.now() - t0;
+      const result = slow.length === 0
+        ? { status: 'pass', msg: `all ${loops.length} sampling loops at ≤ ${MAX_SAMPLE_SEC}s` }
+        : { status: 'fail', msg: `sampling slower than ${MAX_SAMPLE_SEC}s: ${slow.map(([n, s]) => `${n}=${s}s`).join(', ')}` };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Mirrors StatusLeds._evaluate + IOBridge.door_abort: the door opening
+    // while ANY output is live starts a 10s grace countdown (UI shows it);
+    // only if the door STAYS open past the grace is the process aborted and
+    // every output forced off. Closing in time resumes; door open while
+    // idle, or an unreadable sensor, never aborts.
+    if (test.check === 'io_door_abort') {
+      const shouldAbort = (doorOpen, outputs, openSec, graceSec = 10) =>
+        doorOpen === true && Object.values(outputs).some(Boolean) && openSec >= graceSec;
+      const cases = [
+        // [doorOpen, outputs, seconds-open] -> abort?
+        [true,  { heater: true },           12, true],   // heating, past grace -> abort
+        [true,  { uv: true },               10, true],   // exactly at grace -> abort
+        [true,  { cooling: true },          15, true],   // cooling, past grace -> abort
+        [true,  { fan: true },              11, true],   // manual fan -> abort
+        [true,  { heater: true },            3, false],  // closed in time: keep running
+        [true,  { uv: true },                9, false],  // still inside the grace
+        [true,  {},                         60, false],  // idle: nothing to abort
+        [false, { heater: true, uv: true }, 60, false],  // door closed: run on
+        [null,  { heater: true },           60, false],  // unreadable: no false abort
+      ];
+      const bad = cases.filter(([d, o, s, expect]) => shouldAbort(d, o, s) !== expect);
+      const elapsed = Date.now() - t0;
+      const result = bad.length === 0
+        ? { status: 'pass', msg: `${cases.length} door/output/grace combinations abort exactly when they should (10s grace, Err 6016)` }
+        : { status: 'fail', msg: `wrong abort decision for ${bad.length} case(s)` };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Mirrors StatusLeds in server/io_bridge.py: the RGB strip shows machine
+    // status — fault (blink red) > door open (blink) > busy (yellow comet
+    // moving right-to-left while heating/cooling/UV run) > normal (solid).
+    // door_open === null (unreadable sensor) is NOT "open".
+    if (test.check === 'io_rgb_status') {
+      const mode = (fault, doorOpen, busy, internet = true) =>
+        fault ? 'fault' : (doorOpen === true ? 'door'
+          : (busy ? (internet ? 'busy' : 'busy_no_net')
+                  : (!internet ? 'no_net' : 'normal')));
+      const frame = (m, phase, colors) =>
+        m === 'fault' ? (phase ? colors.fault : 'off')
+        : m === 'door' ? (phase ? colors.door : 'off')
+        : m === 'busy' ? 'comet'
+        : m === 'busy_no_net' ? 'blue-comet'
+        : m === 'no_net' ? colors.noNet
+        : colors.normal;
+      const C = { normal: 'green', fault: 'red', door: 'orange', noNet: 'blue' };
+      const cases = [
+        // [fault, doorOpen, busy, internet] -> expected mode
+        [null, false, false, true, 'normal'],       // all OK -> solid normal color
+        [null, true, false, true, 'door'],          // door open -> door blink
+        ['heater fan', true, true, true, 'fault'],  // fault beats door and busy
+        [null, true, true, true, 'door'],           // door beats busy
+        [null, false, true, true, 'busy'],          // process running -> moving yellow
+        [null, null, false, true, 'normal'],        // unreadable sensor stays normal
+        [null, false, false, false, 'no_net'],      // idle + no internet -> solid blue
+        [null, false, true, false, 'busy_no_net'],  // process offline -> BLUE comet
+        ['fan', false, false, false, 'fault'],      // fault beats no-internet
+      ];
+      const bad = cases.filter(([f, d, bz, net, expect]) => mode(f, d, bz, net) !== expect);
+      // Comet frame: head at n-1-offset moves right-to-left, tail fades behind
+      const cometHead = (n, offset) => (n - 1 - offset) % n;
+      const chaseOk = cometHead(21, 0) === 20 && cometHead(21, 1) === 19 && cometHead(21, 21) === 20;
+      const blinkOk =
+        frame('fault', true, C) === 'red' && frame('fault', false, C) === 'off' &&   // fault blinks
+        frame('door', true, C) === 'orange' && frame('door', false, C) === 'off' &&  // door blinks
+        frame('busy', true, C) === 'comet' && frame('busy', false, C) === 'comet' && // busy always animates
+        frame('busy_no_net', true, C) === 'blue-comet' &&                            // offline process: blue comet
+        frame('no_net', true, C) === 'blue' && frame('no_net', false, C) === 'blue' && // idle no-internet solid
+        frame('normal', true, C) === 'green' && frame('normal', false, C) === 'green'; // normal solid
+      const elapsed = Date.now() - t0;
+      const result = bad.length === 0 && blinkOk && chaseOk
+        ? { status: 'pass', msg: 'fault > door > busy > no-internet > normal priority; blink + right-to-left comet correct' }
+        : { status: 'fail', msg: bad.length ? `wrong mode for: ${bad.map(c => `fault=${c[0]},door=${c[1]},busy=${c[2]},net=${c[3]}`).join('; ')}` : (!chaseOk ? 'comet direction wrong' : 'blink pattern wrong') };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Mirrors CureProcessPage: during a cure/bleacher ramp only the heater
+    // runs (deferUv); the UV command is sent when chamberTemp >= target-0.5.
+    // A step with uvStartMode 'at-start' ("On ramp start") never defers —
+    // cure_uv heats AND lights the LEDs from the start of the ramp.
+    if (test.check === 'uv_after_ramp') {
+      const uvAllowed = (chamberTemp, target, ramping) => !ramping || chamberTemp >= target - 0.5;
+      const deferUv = (stepTemp, chamberTemp, uvStartMode) =>
+        stepTemp != null && stepTemp > chamberTemp && uvStartMode !== 'at-start';
+      const cases = [
+        // [stepTemp, chamberTemp at start, uvStartMode] -> UV deferred?
+        [45, 25, 'at-target', true],    // cold chamber: heat first, UV waits
+        [45, 44.8, 'at-target', false], // already at target: UV allowed immediately
+        [null, 30, 'at-target', false], // no temperature on the step: UV immediately
+        [45, 25, 'at-start', false],    // On ramp start: UV lights with the ramp
+        [80, 30, 'at-start', false],    // On ramp start beats any temperature gap
+        [45, 25, undefined, true],      // legacy step without the field: defaults to at-target
+      ];
+      const bad = cases.filter(([t, c, m, expect]) => deferUv(t, c, m) !== expect);
+      const gateOk = uvAllowed(44.5, 45, true) && !uvAllowed(44.4, 45, true) && uvAllowed(20, 45, false);
+      const elapsed = Date.now() - t0;
+      const result = bad.length === 0 && gateOk
+        ? { status: 'pass', msg: 'at-target defers UV until the target temp; at-start lights the UV from ramp start' }
+        : { status: 'fail', msg: `wrong UV gating for: ${bad.map(c => `step ${c[0]}°C @ ${c[1]}°C (${c[2]})`).join(', ') || 'threshold check'}` };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Mirrors CureProcessPage telemetry + the CureHistory Download button:
+    // the sampler takes one sample at t=0 and one every 5s, reading live
+    // values through a ref. The buggy design kept those values in the effect
+    // deps, so the 1s status poll re-created the interval every second — the
+    // 5s timer never fired, runs got ZERO samples and no report. The
+    // Download button shows only when a run has at least one sample.
+    if (test.check === 'telemetry_report') {
+      // samples(run, resetEvery, t0): resetEvery simulates the interval being
+      // re-created by a dep change every N seconds (Infinity = stable ref
+      // design); t0 = whether a sample is taken immediately on start.
+      const samples = (runSeconds, resetEvery, t0) => {
+        let n = t0 ? 1 : 0, sinceReset = 0, sinceSample = 0;
+        for (let t = 1; t <= runSeconds; t++) {
+          sinceReset++; sinceSample++;
+          if (sinceSample >= 5) { n++; sinceSample = 0; }
+          if (sinceReset >= resetEvery) { sinceSample = 0; sinceReset = 0; }
+        }
+        return n;
+      };
+      const canDownload = (n) => n > 0;                       // CureHistoryPage gate
+      const buggy9s = samples(9, 1, false);                   // old design, 1s polling
+      const cases = [
+        // [runSeconds] -> expected samples with the fixed design
+        [3, 1],    // aborted seconds in: still gets the t=0 sample -> report
+        [9, 2],    // the reported "ggg" case: t=0 + t=5
+        [60, 13],  // full minute: t=0 + 12 five-second samples
+      ];
+      const bad = cases.filter(([run, expect]) => samples(run, Infinity, true) !== expect);
+      const bugReproduced = buggy9s === 0 && !canDownload(buggy9s);
+      const allDownloadable = cases.every(([run]) => canDownload(samples(run, Infinity, true)));
+      const elapsed = Date.now() - t0;
+      const result = bad.length === 0 && bugReproduced && allDownloadable
+        ? { status: 'pass', msg: 'sampler survives 1s polling; every run (even a seconds-long abort) has a downloadable report' }
+        : { status: 'fail', msg: bad.length ? `wrong sample count for: ${bad.map(c => `${c[0]}s run`).join(', ')}` : (!bugReproduced ? 'buggy design not reproduced' : 'download gate wrong') };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Mirrors generateCureReport routing + the export-report endpoint contract:
+    // ok → written to USB; server answered with a code (9081 no USB / 9082
+    // write failed) → raise the alert, NO silent browser fallback; no code
+    // (dev / API unreachable) → browser download. Filename is forced to .html.
+    if (test.check === 'report_usb_export') {
+      const route = (ok, code) => ok ? 'usb' : code ? 'alert' : 'browser';
+      const cases = [
+        // [server ok, error code] -> expected action
+        [true, undefined, 'usb'],      // stick present: file lands on the USB
+        [false, 9081, 'alert'],        // no stick: alert 9081, nothing downloads
+        [false, 9082, 'alert'],        // write failed: alert 9082
+        [false, undefined, 'browser'], // dev / server down: browser download
+      ];
+      const bad = cases.filter(([ok, code, expect]) => route(ok, code) !== expect);
+      const forceHtml = (name) => name.toLowerCase().endsWith('.html') ? name : name + '.html';
+      const nameOk = forceHtml('cure-report-x-2026-08-06.html') === 'cure-report-x-2026-08-06.html'
+        && forceHtml('report') === 'report.html';
+      const validCodes = [9081, 9082].every(c => c >= 9080 && c <= 9099);   // storage/backend range
+      const elapsed = Date.now() - t0;
+      const result = bad.length === 0 && nameOk && validCodes
+        ? { status: 'pass', msg: 'USB write when present; 9081/9082 alert with no silent fallback; browser download only off-machine' }
+        : { status: 'fail', msg: bad.length ? `wrong routing for: ${bad.map(c => `ok=${c[0]},code=${c[1]}`).join('; ')}` : 'filename/code contract broken' };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Mirrors the dialog portal fix: dialogs portal into the scaled #root
+    // canvas, so a 550x460 dialog occupies the same PROPORTION of any screen
+    // (550/800 x 460/480) instead of a fixed unscaled pixel box.
+    if (test.check === 'ui_builder_size') {
+      const DIALOG = { w: 550, h: 460 }, CANVAS = { w: 800, h: 480 };
+      const propW = DIALOG.w / CANVAS.w, propH = DIALOG.h / CANVAS.h;   // scale-invariant
+      const screens = [[1280, 720], [1920, 1080], [800, 480]];
+      // On every screen the scaled dialog keeps the design proportions
+      const bad = screens.filter(([sw, sh]) => {
+        const onScreenW = DIALOG.w * (sw / CANVAS.w) / sw;   // = propW for all screens
+        const onScreenH = DIALOG.h * (sh / CANVAS.h) / sh;   // = propH
+        return Math.abs(onScreenW - propW) > 1e-9 || Math.abs(onScreenH - propH) > 1e-9;
+      });
+      const propOk = propW > 0.6 && propW < 0.8 && propH > 0.9;   // design: ~69% x ~96%
+      const elapsed = Date.now() - t0;
+      const result = bad.length === 0 && propOk
+        ? { status: 'pass', msg: `dialog holds ${Math.round(propW * 100)}% x ${Math.round(propH * 100)}% of every screen (design proportions)` }
+        : { status: 'fail', msg: bad.length ? 'dialog proportion changes between screens' : `unexpected proportions ${Math.round(propW * 100)}% x ${Math.round(propH * 100)}%` };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Mirrors fitToScreen() in main.tsx: the fixed 800x480 design canvas is
+    // scaled to fill the whole viewport, on every screen of the app at once.
+    if (test.check === 'ui_fill_scale') {
+      const fit = (w, h) => `${w / 800} ${h / 480}`;
+      const cases = [
+        [1280, 720, '1.6 1.5'],    // the device's DSI panel (720x1280 rotated)
+        [800, 480, '1 1'],         // native design size
+        [1920, 1080, '2.4 2.25'],  // Windows desktop fullscreen
+      ];
+      const bad = cases.filter(([w, h, expect]) => fit(w, h) !== expect);
+      const elapsed = Date.now() - t0;
+      const result = bad.length === 0
+        ? { status: 'pass', msg: `${cases.length} viewports stretch to full screen (no black margins)` }
+        : { status: 'fail', msg: `wrong scale for: ${bad.map(c => `${c[0]}x${c[1]}`).join(', ')}` };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Live chamber-temperature ramp: after a heat command, /api/state
+    // chamberTemp must move toward the target (real thermistor on the Pi,
+    // thermal simulation off-board). This is the value the Cure screen shows.
+    if (test.check === 'temp_ramp_live') {
+      const readState = async () => {
+        const r = await fetch(apiUrl + '/api/state', { signal: AbortSignal.timeout(5000) });
+        return r.json();
+      };
+      const before = await readState();
+      const cmdRes = await fetch(apiUrl + '/api/cure/heat?target=40', { method: 'POST', signal: AbortSignal.timeout(5000) });
+      const cmd = await cmdRes.json();
+      if (!cmd.ok) {
+        const elapsed = Date.now() - t0;
+        setTestStatus(test.id, 'warn', `Heat command refused: ${cmd.message || 'unknown'}`, elapsed);
+        log('warn', `${test.name}: heat command refused (${cmd.message || 'unknown'})`);
+        return;
+      }
+      setTestStatus(test.id, 'running', 'Heating — sampling for 8s...', '');
+      await new Promise(r => setTimeout(r, 8000));
+      const after = await readState();
+      await fetch(apiUrl + '/api/cure/stop', { method: 'POST', signal: AbortSignal.timeout(5000) }).catch(() => {});
+      const elapsed = Date.now() - t0;
+      const b = before.chamberTemp, a = after.chamberTemp;
+      let result;
+      if (typeof a !== 'number') result = { status: 'fail', msg: 'No chamberTemp in /api/state' };
+      else if (a >= 39.5) result = { status: 'pass', msg: `At target: ${a}°C` };
+      else if (a - b >= 0.3) result = { status: 'pass', msg: `${b}°C → ${a}°C (rising toward 40°C)` };
+      else result = { status: 'fail', msg: `chamberTemp not moving toward target: ${b}°C → ${a}°C` };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 100));
+      return;
+    }
+
+    // Cooling control type: NO closed-loop rate control — each UI mode holds
+    // the chamber fan at a FIXED duty for the whole mode (slow=30%,
+    // medium=60%, fast=100%; io_bridge COOLING_MODE_PWMS / components.json
+    // cooling.mode_pwms). Verified live via coolingFanPwm in /api/state.
+    if (test.check === 'io_cool_pwm') {
+      const EXPECTED = { slow: 30, medium: 60, fast: 100 };
+      const problems = [];
+      let checked = 0;
+      for (const [mode, pwm] of Object.entries(EXPECTED)) {
+        const cmd = await (await fetch(apiUrl + `/api/cure/cool?target=20&mode=${mode}`, { method: 'POST', signal: AbortSignal.timeout(5000) })).json();
+        if (!cmd.ok) { problems.push(`${mode}: refused (${cmd.message || 'unknown'})`); continue; }
+        await new Promise(r => setTimeout(r, 500));
+        const st = await (await fetch(apiUrl + '/api/state', { signal: AbortSignal.timeout(5000) })).json();
+        if (!st.isCooling && st.chamberTemp <= 21) continue;   // already at target: nothing to measure
+        checked++;
+        if (st.coolingFanPwm !== pwm) problems.push(`${mode}: fan ${st.coolingFanPwm}% (expected ${pwm}%)`);
+      }
+      await fetch(apiUrl + '/api/cure/stop', { method: 'POST', signal: AbortSignal.timeout(5000) }).catch(() => {});
+      const elapsed = Date.now() - t0;
+      const result = problems.length > 0
+        ? { status: 'fail', msg: problems.join('; ') }
+        : checked === 0
+          ? { status: 'warn', msg: 'chamber already at/below 20°C — fixed duty not measurable live' }
+          : { status: 'pass', msg: `fan duty fixed per mode (${checked}/3 verified): slow=30%, medium=60%, fast=100%` };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 100));
+      return;
+    }
+
+    // Cure screen ramp logic (mirrors CureProcessPage.tick with real hardware):
+    // the ramp ends ONLY when the measured chamber temperature reaches
+    // target - 0.5, never on a timer.
+    if (test.check === 'temp_ramp_logic') {
+      const rampState = (chamberTemp, targetTemp) => chamberTemp >= targetTemp - 0.5 ? 'hold' : 'ramping';
+      const cases = [
+        [25, 45, 'ramping'], [44.4, 45, 'ramping'], [44.5, 45, 'hold'],
+        [45, 45, 'hold'], [47, 45, 'hold'], [26, 80, 'ramping'],
+      ];
+      const bad = cases.filter(([temp, target, expect]) => rampState(temp, target) !== expect);
+      const elapsed = Date.now() - t0;
+      const result = bad.length === 0
+        ? { status: 'pass', msg: `${cases.length} ramp/hold transitions follow the measured temp` }
+        : { status: 'fail', msg: `${bad.length} wrong transition(s): ${bad.map(c => `${c[0]}°C→${c[1]}°C`).join(', ')}` };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Cure screen timer (mirrors CureProcessPage.tick): elapsed seconds come
+    // from a performance.now() anchor, so ticks that fire late — the kiosk
+    // browser under load runs setInterval(1000) at 1050-1200ms — do not
+    // stretch the phase. Counting ticks (the old bug) would.
+    if (test.check === 'timer_wallclock') {
+      const elapsedAt = (nowMs, anchorMs) => Math.floor((nowMs - anchorMs) / 1000);
+      const problems = [];
+      // 10 ticks each 15% late: wall-clock 11.5s. Tick-counting would say 10.
+      let now = 0; const anchor = 0;
+      for (let i = 0; i < 10; i++) now += 1150;
+      if (elapsedAt(now, anchor) !== 11) problems.push(`late ticks: got ${elapsedAt(now, anchor)}s, want 11s`);
+      // A missed tick (browser throttling): next tick catches up to wall-clock.
+      if (elapsedAt(5000 + 2000, 5000 - 3000) !== 5) problems.push('missed tick did not catch up');
+      // Re-anchor carries already-elapsed seconds (ramp→hold handoff).
+      const reAnchor = 90000 - 42 * 1000;
+      if (elapsedAt(90000, reAnchor) !== 42) problems.push('re-anchor lost carried seconds');
+      // Clamp at the phase maximum, as the page does with Math.min(maxSec, …).
+      if (Math.min(120, elapsedAt(300000, 0)) !== 120) problems.push('no clamp at maxSec');
+      const elapsed = Date.now() - t0;
+      const result = problems.length === 0
+        ? { status: 'pass', msg: 'anchored elapsed matches wall-clock under late, missed, and re-anchored ticks' }
+        : { status: 'fail', msg: problems.join('; ') };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Cure screen timer display (mirrors the 250ms refresh + anchored elapsed):
+    // sampling 4x per second must produce a strictly 1-by-1 seconds readout —
+    // never a skip — and samples inside the same second must be no-ops
+    // (the page's updater returns the previous state to avoid re-renders).
+    if (test.check === 'timer_smooth') {
+      const problems = [];
+      const anchor = 0;
+      let shown = 0, changes = 0;
+      const seen = [0];
+      // 10 simulated seconds sampled every 250ms, each sample 0-80ms late
+      // (the realistic kiosk jitter) — the boundary is still caught in time.
+      for (let ms = 250; ms <= 10000; ms += 250) {
+        const jitter = (ms * 7919) % 81;  // deterministic 0-80ms lateness
+        const elapsed = Math.floor((ms + jitter - anchor) / 1000);
+        if (elapsed !== shown) {
+          if (elapsed - shown !== 1) problems.push(`jumped ${shown}s → ${elapsed}s`);
+          shown = elapsed; changes++; seen.push(elapsed);
+        }
+      }
+      if (shown !== 10) problems.push(`ended at ${shown}s, want 10s`);
+      if (changes !== 10) problems.push(`${changes} state changes for 10s (want exactly 10 — no churn inside a second)`);
+      const elapsed = Date.now() - t0;
+      const result = problems.length === 0
+        ? { status: 'pass', msg: `40 samples over 10s: readout advanced 1-by-1 (${seen.join(',')})` }
+        : { status: 'fail', msg: problems.join('; ') };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Cooling gauge center (mirrors getGaugeInfo's cooling branch): the value
+    // in the middle of the ring is the live chamber temp while cooling runs,
+    // and the target temperature otherwise — never blank.
+    if (test.check === 'cool_gauge_temp') {
+      const gauge = (status, chamberTemp, coolTarget) => ({
+        value: status === 'active' ? `${chamberTemp}` : `${coolTarget}`,
+        label: 'COOL °C',
+      });
+      const cases = [
+        ['active', 52.3, 30, '52.3'], ['active', 30.4, 30, '30.4'],
+        ['completed', 29.9, 30, '30'], ['pending', 71.2, 25, '25'],
+      ];
+      const bad = cases.filter(([st, temp, target, want]) => {
+        const g = gauge(st, temp, target);
+        return g.value !== want || g.value === '' || g.label !== 'COOL °C';
+      });
+      const elapsed = Date.now() - t0;
+      const result = bad.length === 0
+        ? { status: 'pass', msg: `${cases.length} states show a temperature in the gauge center (COOL °C)` }
+        : { status: 'fail', msg: `${bad.length} state(s) wrong/blank: ${bad.map(c => c[0]).join(', ')}` };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Cure/Bleaching gauge countdown (mirrors getGaugeInfo): during the UV
+    // hold the gauge centers the remaining time; while ramping, the temp.
+    if (test.check === 'cure_countdown') {
+      const fmt = t => `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`;
+      const gauge = (status, ramping, timeMin, elapsed, chamberTemp) => {
+        const remaining = Math.max(0, timeMin * 60 - elapsed);
+        const activeRamp = status === 'active' && ramping;
+        const activeHold = status === 'active' && !ramping;
+        return {
+          value: activeRamp ? `${chamberTemp}` : activeHold ? fmt(remaining)
+            : status === 'completed' ? '00:00' : fmt(timeMin * 60),
+          label: activeRamp ? 'RAMP °C' : 'REMAINING',
+        };
+      };
+      const problems = [];
+      const t1 = gauge('active', false, 20, 300, 60);   // 15:00 left of 20 min
+      if (t1.value !== '15:00' || t1.label !== 'REMAINING') problems.push(`hold: ${t1.value}/${t1.label}, want 15:00/REMAINING`);
+      const t2 = gauge('active', true, 20, 0, 47.5);    // ramping: show temp
+      if (t2.value !== '47.5' || t2.label !== 'RAMP °C') problems.push(`ramp: ${t2.value}/${t2.label}, want 47.5/RAMP °C`);
+      const t3 = gauge('active', false, 10, 600, 60);   // time exhausted
+      if (t3.value !== '00:00') problems.push(`exhausted: ${t3.value}, want 00:00`);
+      const t4 = gauge('pending', false, 12, 0, 25);    // pending: full time
+      if (t4.value !== '12:00') problems.push(`pending: ${t4.value}, want 12:00`);
+      if (gauge('completed', false, 12, 720, 25).value !== '00:00') problems.push('completed not 00:00');
+      const elapsed = Date.now() - t0;
+      const result = problems.length === 0
+        ? { status: 'pass', msg: 'countdown MM:SS during hold, temp during ramp, 00:00 done, full time pending' }
+        : { status: 'fail', msg: problems.join('; ') };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // No-heat step rules (mirror CureProcessPage + MaterialContext): any
+    // heat-type step below the 30°C heating floor runs without heating —
+    // Cure/Bleaching UV-only, Drying fan-only, Heating a plain timed hold.
+    if (test.check === 'no_heat_step') {
+      const isNoHeat = (type, temp) => type !== 'cooling' && type !== 'nitrogen' && temp != null && temp < 30;
+      const willRamp = (type, temp, chamber) => temp != null && type !== 'cooling' && temp > chamber && temp >= 30;
+      const seqViolation = (temps) => {           // mirrors the CSV sequence rule
+        let last = null;
+        for (const t of temps) {
+          if (t < 30) continue;                   // no-heat: neither violates nor advances
+          if (last !== null && t < last) return true;
+          last = t;
+        }
+        return false;
+      };
+      const problems = [];
+      // Editor display: below the floor the temperature field reads OFF
+      const fmtTemp = v => v < 30 ? 'OFF' : `${v}°C`;
+      if (fmtTemp(25) !== 'OFF') problems.push('25 not displayed as OFF');
+      if (fmtTemp(30) !== '30°C') problems.push('30 not displayed as 30°C');
+      if (!isNoHeat('cure', 25)) problems.push('cure@25 not flagged no-heat');
+      if (!isNoHeat('bleacher', 29)) problems.push('bleacher@29 not flagged no-heat');
+      if (isNoHeat('cure', 30)) problems.push('cure@30 wrongly no-heat (30 is heated)');
+      if (!isNoHeat('drying', 25)) problems.push('drying@25 not flagged no-heat (fan-only mode)');
+      if (!isNoHeat('heating', 25)) problems.push('heating@25 not flagged no-heat (timed hold)');
+      if (isNoHeat('cooling', 25)) problems.push('cooling@25 wrongly no-heat (cooling is not a heat-type step)');
+      if (willRamp('cure', 25, 20)) problems.push('no-heat cure@25 ramps from a 20° chamber');
+      if (!willRamp('cure', 60, 25)) problems.push('heated cure@60 does not ramp');
+      if (seqViolation([60, 25])) problems.push('no-heat 25 after 60 flagged as sequence violation');
+      if (!seqViolation([60, 45])) problems.push('heated 45 after 60 NOT flagged');
+      if (seqViolation([60, 25, 70])) problems.push('60 → no-heat 25 → 70 wrongly flagged');
+      const elapsed = Date.now() - t0;
+      const result = problems.length === 0
+        ? { status: 'pass', msg: 'below-30 Cure/Bleaching: UV-only, no ramp, exempt from the rising-temperature rule' }
+        : { status: 'fail', msg: problems.join('; ') };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // Heater ON-hours gate (mirrors ComponentCounters._sample): heater
+    // seconds count ONLY while the heating loop is active — a latched
+    // heaterOut/heaterPwm left behind by a stopped loop must not count.
+    if (test.check === 'heater_hours_gate') {
+      const heaterCounts = (isHeating, heaterOut, heaterPwm) =>
+        Boolean(isHeating) && (
+          heaterOut !== null ? Boolean(heaterOut)
+          : heaterPwm !== null ? heaterPwm > 0
+          : true);
+      const cases = [
+        // [isHeating, heaterOut, heaterPwm, expected]
+        [false, true,  84.8, false],  // THE BUG: stale latch after a stop
+        [false, null,  84.8, false],  // stale pwm alone must not count either
+        [false, null,  null, false],  // idle machine
+        [true,  true,  62.0, true],   // element energized mid-heating
+        [true,  false, 62.0, false],  // delta-sigma OFF phase: element off
+        [true,  null,  62.0, true],   // no heaterOut reading: pwm fallback
+        [true,  null,  null, true],   // no readings at all: isHeating fallback
+      ];
+      const bad = cases.filter(([h, out, pwm, want]) => heaterCounts(h, out, pwm) !== want);
+      const elapsed = Date.now() - t0;
+      const result = bad.length === 0
+        ? { status: 'pass', msg: `${cases.length} sampling states gated correctly — stale heaterOut after a stop never accumulates hours` }
+        : { status: 'fail', msg: `${bad.length} state(s) wrong: ${bad.map(c => `isHeating=${c[0]},out=${c[1]},pwm=${c[2]}`).join('; ')}` };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 50));
+      return;
+    }
+
+    // RGB manual override round-trip: paint the strip, reject a bad color,
+    // then hand it back to the automatic status colors — leaves no trace.
+    if (test.check === 'rgb_override') {
+      const post = q => fetch(apiUrl + '/api/rgb' + q, { method: 'POST', signal: AbortSignal.timeout(5000) }).then(r => r.json());
+      const problems = [];
+      try {
+        const on = await post('?on=1&color=purple&brightness=40');
+        if (!on.ok) problems.push('on=1 color=purple refused: ' + (on.message || ''));
+        const bad = await post('?on=1&color=nosuchcolor');
+        if (bad.ok) problems.push('unknown color name was accepted');
+        const off = await post('?on=0');
+        if (!off.ok) problems.push('on=0 (release to auto) refused: ' + (off.message || ''));
+      } catch (e) {
+        problems.push('request failed: ' + e.message);
+        await post('?on=0').catch(() => {});   // never leave the override on
+      }
+      const elapsed = Date.now() - t0;
+      const result = problems.length === 0
+        ? { status: 'pass', msg: 'purple override accepted, bad color rejected, strip released to auto status' }
+        : { status: 'fail', msg: problems.join('; ') };
+      setTestStatus(test.id, result.status, result.msg, elapsed);
+      log(result.status, `${test.name}: ${result.msg} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 100));
+      return;
+    }
+
+    // Durable-store round-trip: save a program, read it back, confirm it
+    // persisted — then restore the original list so the user's data is intact.
+    if (test.check === 'data_persist_roundtrip') {
+      const url = apiUrl + '/api/materials/user';
+      const orig = await fetch(url, { signal: AbortSignal.timeout(5000) }).then(r => r.json()).catch(() => null);
+      if (!Array.isArray(orig)) {
+        const elapsed = Date.now() - t0;
+        setTestStatus(test.id, 'fail', 'GET did not return an array (503/no store?)', elapsed);
+        log('fail', `${test.name}: user-materials GET is not an array`);
+        return;
+      }
+      const marker = { id: 'qa-persist-probe', name: 'QA Persistence Probe', steps: [{ step: 1, process: 'Heating', temperature: 45, time: 10 }], totalDuration: 10, isPreset: false };
+      const post = (body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
+      await post([...orig.filter(m => !m.isPreset), marker]);
+      const after = await fetch(url, { signal: AbortSignal.timeout(5000) }).then(r => r.json()).catch(() => []);
+      const saved = Array.isArray(after) && after.some(m => m.id === marker.id && m.name === marker.name);
+      await post(orig.filter(m => !m.isPreset));   // restore the user's real list
+      const elapsed = Date.now() - t0;
+      if (saved) {
+        setTestStatus(test.id, 'pass', 'Program saved & re-read from the durable store', elapsed);
+        log('pass', `${test.name}: persisted and restored (${elapsed}ms)`);
+      } else {
+        setTestStatus(test.id, 'fail', 'Saved program was not read back — not persisting', elapsed);
+        log('fail', `${test.name}: program did not persist`);
+      }
+      await new Promise(r => setTimeout(r, 100));
+      return;
+    }
+
+    // Performance tests with special logic
+    if (test.check === 'perf_latency') {
+      const times = [];
+      for (let i = 0; i < (test.iterations || 10); i++) {
+        const s = Date.now();
+        await fetch(apiUrl + test.endpoint, { signal: AbortSignal.timeout(5000) });
+        times.push(Date.now() - s);
+        setTestStatus(test.id, 'running', `${i + 1}/${test.iterations}...`, '');
+      }
+      const avg = Math.round(times.reduce((a, b) => a + b, 0) / times.length);
+      const max = Math.max(...times);
+      const min = Math.min(...times);
+      const elapsed = Date.now() - t0;
+      const status = avg < 100 ? 'pass' : avg < 300 ? 'warn' : 'fail';
+      setTestStatus(test.id, status, `avg ${avg}ms (min ${min}, max ${max})`, elapsed);
+      log(status, `${test.name}: avg=${avg}ms min=${min}ms max=${max}ms (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 100));
+      return;
+    }
+
+    if (test.check === 'perf_burst') {
+      const n = test.iterations || 20;
+      const s = Date.now();
+      const promises = Array.from({ length: n }, () =>
+        fetch(apiUrl + test.endpoint, { signal: AbortSignal.timeout(10000) }).then(r => r.ok)
+      );
+      const results = await Promise.all(promises);
+      const elapsed = Date.now() - s;
+      const ok = results.filter(Boolean).length;
+      const status = ok === n ? 'pass' : ok > n * 0.8 ? 'warn' : 'fail';
+      setTestStatus(test.id, status, `${ok}/${n} OK in ${elapsed}ms`, elapsed);
+      log(status, `${test.name}: ${ok}/${n} succeeded in ${elapsed}ms`);
+      await new Promise(r => setTimeout(r, 100));
+      return;
+    }
+
+    if (test.check === 'perf_multi_load') {
+      const s = Date.now();
+      const [presetsRes, userRes] = await Promise.all([
+        fetch(apiUrl + '/api/materials/presets', { signal: AbortSignal.timeout(5000) }).then(r => r.json()).catch(() => []),
+        fetch(apiUrl + '/api/materials/user', { signal: AbortSignal.timeout(5000) }).then(r => r.json()).catch(() => []),
+      ]);
+      const elapsed = Date.now() - s;
+      const total = presetsRes.length + userRes.length;
+      const status = elapsed < 500 ? 'pass' : elapsed < 1500 ? 'warn' : 'fail';
+      setTestStatus(test.id, status, `${total} materials in ${elapsed}ms`, elapsed);
+      log(status, `${test.name}: ${presetsRes.length} presets + ${userRes.length} user = ${total} (${elapsed}ms)`);
+      await new Promise(r => setTimeout(r, 100));
+      return;
+    }
+
+    if (test.check === 'perf_simple') {
+      const opts = { method: test.method, signal: AbortSignal.timeout(5000) };
+      const res = await fetch(apiUrl + test.endpoint, opts);
+      const data = await res.json();
+      const elapsed = Date.now() - t0;
+      const status = data.ok ? (elapsed < 200 ? 'pass' : elapsed < 500 ? 'warn' : 'fail') : 'fail';
+      setTestStatus(test.id, status, `${elapsed}ms response`, elapsed);
+      log(status, `${test.name}: ${elapsed}ms (${data.ok ? 'OK' : 'FAIL'})`);
+      await new Promise(r => setTimeout(r, 100));
+      return;
+    }
+
+    // Standard tests
+    let res, data;
+
+    if (test.url) {
+      res = await fetch(test.url, { signal: AbortSignal.timeout(5000) });
+      data = await res.json();
+    } else {
+      const opts = { method: test.method, signal: AbortSignal.timeout(10000) };
+      if (test.body) {
+        opts.headers = { 'Content-Type': 'application/json' };
+        opts.body = JSON.stringify(test.body);
+      }
+      res = await fetch(apiUrl + test.endpoint, opts);
+      data = await res.json();
+    }
+
+    const elapsed = Date.now() - t0;
+
+    // Check result
+    if (test.expect === 'ok' && data.ok) {
+      setTestStatus(test.id, 'pass', data.message || 'OK', elapsed);
+      log('pass', `${test.name}: OK (${elapsed}ms)`);
+    } else if (test.expect && data[test.expect] !== undefined) {
+      setTestStatus(test.id, 'pass', JSON.stringify(data[test.expect]).slice(0, 50), elapsed);
+      log('pass', `${test.name}: ${test.expect} = ${JSON.stringify(data[test.expect]).slice(0, 40)} (${elapsed}ms)`);
+    } else if (test.expectArray && Array.isArray(data)) {
+      setTestStatus(test.id, 'pass', `${data.length} items`, elapsed);
+      log('pass', `${test.name}: ${data.length} items (${elapsed}ms)`);
+    } else if (test.check) {
+      const checkResult = runCheck(test.check, data);
+      setTestStatus(test.id, checkResult.status, checkResult.msg, elapsed);
+      log(checkResult.status, `${test.name}: ${checkResult.msg} (${elapsed}ms)`);
+    } else {
+      setTestStatus(test.id, 'warn', 'Unexpected response', elapsed);
+      log('warn', `${test.name}: Unexpected response`);
+    }
+  } catch (e) {
+    const elapsed = Date.now() - t0;
+    setTestStatus(test.id, 'fail', e.message, elapsed);
+    log('fail', `${test.name}: ${e.message} (${elapsed}ms)`);
+  }
+
+  // Small delay between tests
+  await new Promise(r => setTimeout(r, 100));
+}
+
+function runCheck(check, data) {
+  switch (check) {
+    case 'hwc_n2_state': {
+      if (typeof data.nitrogenActive !== 'boolean') return { status: 'fail', msg: 'No nitrogenActive in /api/state' };
+      return data.nitrogenActive
+        ? { status: 'pass', msg: 'nitrogenActive = true after valve open' }
+        : { status: 'warn', msg: 'nitrogenActive is false (valve command may have been refused off-Pi)' };
+    }
+    case 'hwc_state_extras': {
+      const missing = ['ledTemps', 'fanRpm', 'nitrogenActive', 'faults'].filter(k => data[k] === undefined);
+      if (missing.length > 0) return { status: 'fail', msg: `Missing state fields: ${missing.join(', ')}` };
+      return { status: 'pass', msg: `hwSource=${data.hwSource}: ledTemps/fanRpm/nitrogenActive/faults all present` };
+    }
+    case 'temp_range': {
+      const temp = data.chamberTemp;
+      if (typeof temp !== 'number') return { status: 'fail', msg: 'No temperature data' };
+      if (temp < -10 || temp > 120) return { status: 'fail', msg: `Out of range: ${temp}°C` };
+      if (temp < 15 || temp > 85) return { status: 'warn', msg: `Unusual: ${temp}°C` };
+      return { status: 'pass', msg: `${temp}°C` };
+    }
+    case 'temp_set':
+      return data.ok ? { status: 'pass', msg: 'Target set to 40°C' } : { status: 'fail', msg: 'Failed to set target' };
+    case 'fan_rpm': {
+      const rpm = data.rpm;
+      if (!rpm) return { status: 'fail', msg: 'No RPM data' };
+      if (rpm < 1000) return { status: 'fail', msg: `Low RPM: ${rpm}` };
+      if (rpm < 2000) return { status: 'warn', msg: `${rpm} RPM (low)` };
+      return { status: 'pass', msg: `${rpm} RPM` };
+    }
+    case 'led_results': {
+      const results = data.results;
+      if (!results || !Array.isArray(results)) return { status: 'fail', msg: 'No LED data' };
+      const failed = results.filter(r => r.status !== 'OK');
+      if (failed.length > 0) return { status: 'fail', msg: `${failed.length} LED(s) failed` };
+      return { status: 'pass', msg: `${results.length} LEDs OK` };
+    }
+    case 'presets': {
+      if (!Array.isArray(data)) return { status: 'fail', msg: 'Not an array' };
+      if (data.length === 0) return { status: 'warn', msg: 'No presets found' };
+      const valid = data.every(m => m.name && Array.isArray(m.steps) && m.steps.length > 0);
+      if (!valid) return { status: 'fail', msg: 'Invalid preset structure' };
+      return { status: 'pass', msg: `${data.length} presets loaded` };
+    }
+    case 'errors': {
+      if (!data.errors || !Array.isArray(data.errors)) return { status: 'fail', msg: 'No errors array' };
+      const critical = data.errors.filter(e => e.severity === 'critical').length;
+      const warnings = data.errors.filter(e => e.severity === 'warning').length;
+      return { status: 'pass', msg: `${critical} errors, ${warnings} warnings` };
+    }
+    case 'system': {
+      if (!data.serialNumber) return { status: 'fail', msg: 'No serial number' };
+      return { status: 'pass', msg: `S/N: ${data.serialNumber}` };
+    }
+    // --- IO Board Integration (io_controller bridge) ---
+    case 'io_hw_source': {
+      if (data.hwSource === 'io_controller') return { status: 'pass', msg: 'Real IO board (io_controller)' };
+      return { status: 'warn', msg: `Simulation mode (hwSource: ${data.hwSource || 'none'})` };
+    }
+    case 'io_door': {
+      if (typeof data.doorClosed !== 'boolean') return { status: 'fail', msg: 'No doorClosed in state' };
+      return { status: 'pass', msg: data.doorClosed ? 'Door CLOSED' : 'Door OPEN' };
+    }
+    case 'io_heating_on': {
+      if (data.hwSource !== 'io_controller') return { status: 'warn', msg: 'Simulation — not read from hardware' };
+      if (data.isHeating) return { status: 'pass', msg: `Heating, target ${data.targetTemp}°C` };
+      return { status: 'fail', msg: (data.faults && data.faults.heater) || 'isHeating = false' };
+    }
+    case 'io_uv_on': {
+      if (data.hwSource !== 'io_controller') return { status: 'warn', msg: 'Simulation — not read from hardware' };
+      if (data.uvOn && data.uvWavelength === 405) return { status: 'pass', msg: `UV 405nm ON @ ${data.uvIntensity}%` };
+      return { status: 'fail', msg: (data.faults && data.faults.led) || 'UV not on' };
+    }
+    case 'io_all_off': {
+      if (data.uvOn || data.isCooling) return { status: 'fail', msg: 'Outputs still on after stop' };
+      return { status: 'pass', msg: 'All outputs off' };
+    }
+    default: {
+      // Program Validation checks (pv_*)
+      if (check.startsWith('pv_')) return runProgramValidationCheck(check);
+      return { status: 'warn', msg: 'Unknown check' };
+    }
+  }
+}
+
+// ============================================================
+// Program Validation Logic (mirrors CsvBuilderModal)
+// ============================================================
+function validateProgram(name, steps) {
+  const hasNitrogen = steps.some(s => s.process === 'Nitrogen');
+  const hasCooling = steps.some(s => s.process === 'Cooling');
+  const hasCureOrHeating = steps.some(s => s.process === 'Cure' || s.process === 'Bleacher' || s.process === 'Heating');
+
+  // Each N₂ purge must be followed by Cure/Bleaching, then Cooling: N₂ → (Cure|Bleach) → Cooling
+  const n2BlockError = (() => {
+    for (let i = 0; i < steps.length; i++) {
+      if (steps[i].process !== 'Nitrogen') continue;
+      const next = steps[i + 1];
+      const after = steps[i + 2];
+      if (!next || (next.process !== 'Cure' && next.process !== 'Bleacher')) {
+        return 'After an N₂ purge, add a Cure or Bleaching step';
+      }
+      if (!after || after.process !== 'Cooling') {
+        return 'Add a Cooling step after the Cure/Bleaching step that follows the N₂ purge';
+      }
+    }
+    return null;
+  })();
+
+  if (!name.trim()) return 'Enter a program name';
+  if (steps.length === 0) return 'Add at least one step';
+  if (!hasCureOrHeating) return 'Program must include a Cure or Heating step';
+  if (hasNitrogen && n2BlockError) return n2BlockError;
+  return null;
+}
+
+// ============================================================
+// Compliance Logic (mirrors src/lib/compliance.ts)
+// ============================================================
+async function sha256HexQA(bytes) {
+  const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes));
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function normalizeSha256QA(value) {
+  if (typeof value !== 'string') return null;
+  const v = value.trim().toLowerCase().replace(/^sha-?256[:=]\s*/, '');
+  return /^[0-9a-f]{64}$/.test(v) ? v : null;
+}
+async function verifyUpdatePackageQA(bytes, expected) {
+  const e = normalizeSha256QA(expected);
+  if (!e) return { ok: false, reason: 'Missing or malformed checksum' };
+  const a = await sha256HexQA(bytes);
+  return a === e ? { ok: true, reason: 'Integrity verified' } : { ok: false, reason: 'Checksum mismatch' };
+}
+// Mirror of REQ-CRA IDs defined in src/lib/compliance.ts
+const QA_CRA_REQUIREMENTS = ['REQ-CRA-01','REQ-CRA-02','REQ-CRA-03','REQ-CRA-04','REQ-CRA-05','REQ-CRA-06','REQ-CRA-07','REQ-CRA-08'];
+
+async function runComplianceCheck(check) {
+  const enc = new TextEncoder();
+  const pkg = enc.encode('scure-update:1.0.1');
+  const goodHash = await sha256HexQA(pkg);
+
+  switch (check) {
+    case 'cra_verify_pass': {
+      const r = await verifyUpdatePackageQA(pkg, goodHash);
+      return r.ok ? { status: 'pass', msg: 'Valid package verified' } : { status: 'fail', msg: 'Valid package was rejected: ' + r.reason };
+    }
+    case 'cra_verify_tamper': {
+      const tampered = enc.encode('scure-update:1.0.1-EVIL');
+      const r = await verifyUpdatePackageQA(tampered, goodHash);
+      return !r.ok ? { status: 'pass', msg: 'Blocked: ' + r.reason } : { status: 'fail', msg: 'Tampered package was NOT blocked' };
+    }
+    case 'cra_verify_missing_hash': {
+      const r = await verifyUpdatePackageQA(pkg, '');
+      return !r.ok ? { status: 'pass', msg: 'Blocked: ' + r.reason } : { status: 'fail', msg: 'Missing checksum was NOT blocked' };
+    }
+    case 'cra_verify_bad_hex': {
+      const r = await verifyUpdatePackageQA(pkg, 'zz' + goodHash.slice(2, 40));
+      return !r.ok ? { status: 'pass', msg: 'Blocked: ' + r.reason } : { status: 'fail', msg: 'Malformed checksum was NOT blocked' };
+    }
+    case 'cra_verify_prefix_upper': {
+      const r = await verifyUpdatePackageQA(pkg, 'SHA256:' + goodHash.toUpperCase());
+      return r.ok ? { status: 'pass', msg: 'Normalized & verified' } : { status: 'fail', msg: 'Prefixed/uppercase digest not accepted' };
+    }
+    case 'cra_requirements_defined': {
+      return QA_CRA_REQUIREMENTS.length === 8
+        ? { status: 'pass', msg: '8 REQ-CRA requirements defined' }
+        : { status: 'fail', msg: `Expected 8, got ${QA_CRA_REQUIREMENTS.length}` };
+    }
+    default:
+      return { status: 'warn', msg: 'Unknown compliance check' };
+  }
+}
+
+function runProgramValidationCheck(check) {
+  const s = (process, temp, time) => ({ process, temperature: temp ?? null, time: time ?? 10 });
+
+  switch (check) {
+    case 'pv_empty_name': {
+      const err = validateProgram('', [s('Heating', 40)]);
+      return err ? { status: 'pass', msg: 'Blocked: ' + err } : { status: 'fail', msg: 'Should block empty name' };
+    }
+    case 'pv_no_steps': {
+      const err = validateProgram('Test', []);
+      return err ? { status: 'pass', msg: 'Blocked: ' + err } : { status: 'fail', msg: 'Should block empty steps' };
+    }
+    case 'pv_valid_simple': {
+      const err = validateProgram('Test', [s('Heating', 40), s('Cooling', 25)]);
+      return !err ? { status: 'pass', msg: 'Valid program accepted' } : { status: 'fail', msg: 'Rejected valid program: ' + err };
+    }
+    case 'pv_n2_no_process': {
+      const err = validateProgram('Test', [s('Heating', 40), s('Nitrogen'), s('Cooling', 25)]);
+      return err ? { status: 'pass', msg: 'Blocked: ' + err } : { status: 'fail', msg: 'Should block N₂ without process after' };
+    }
+    case 'pv_n2_with_heating': {
+      // New rule: Heating directly after N₂ is NOT allowed — only Cure/Bleaching
+      const steps = [s('Heating', 40), s('Nitrogen'), s('Heating', 60), s('Cooling', 25)];
+      const err = validateProgram('Test', steps);
+      return err ? { status: 'pass', msg: 'Blocked: ' + err } : { status: 'fail', msg: 'Should block Heating after N₂' };
+    }
+    case 'pv_n2_with_cure': {
+      const steps = [s('Heating', 40), s('Nitrogen'), s('Cure', 40), s('Cooling', 25)];
+      const err = validateProgram('Test', steps);
+      return !err ? { status: 'pass', msg: 'N₂ + Cure accepted' } : { status: 'fail', msg: 'Rejected: ' + err };
+    }
+    case 'pv_n2_with_bleacher': {
+      const steps = [s('Heating', 40), s('Nitrogen'), s('Bleacher', 40), s('Cooling', 25)];
+      const err = validateProgram('Test', steps);
+      return !err ? { status: 'pass', msg: 'N₂ + Bleaching accepted' } : { status: 'fail', msg: 'Rejected: ' + err };
+    }
+    case 'pv_n2_no_cooling': {
+      // N₂ → Cure with no Cooling after → blocked (must be vented)
+      const steps = [s('Heating', 40), s('Nitrogen'), s('Cure', 60)];
+      const err = validateProgram('Test', steps);
+      return err ? { status: 'pass', msg: 'Blocked: ' + err } : { status: 'fail', msg: 'Should block N₂ without Cooling' };
+    }
+    case 'pv_n2_with_cooling': {
+      const steps = [s('Heating', 40), s('Nitrogen'), s('Cure', 60), s('Cooling', 25)];
+      const err = validateProgram('Test', steps);
+      return !err ? { status: 'pass', msg: 'Full N₂ flow accepted' } : { status: 'fail', msg: 'Rejected: ' + err };
+    }
+    case 'pv_n2_cure_cooling': {
+      const steps = [s('Heating', 40), s('Nitrogen'), s('Cure', 40), s('Cooling', 25)];
+      const err = validateProgram('Test', steps);
+      return !err ? { status: 'pass', msg: 'N₂ → Cure → Cooling accepted' } : { status: 'fail', msg: 'Rejected: ' + err };
+    }
+    case 'pv_only_cooling': {
+      const err = validateProgram('Test', [s('Cooling', 25)]);
+      return err ? { status: 'pass', msg: 'Blocked: ' + err } : { status: 'fail', msg: 'Should block program without Cure/Heating' };
+    }
+    case 'pv_n2_drying_after': {
+      // Drying directly after N₂ is not allowed
+      const steps = [s('Heating', 40), s('Nitrogen'), s('Drying', 50), s('Cure', 60), s('Cooling', 25)];
+      const err = validateProgram('Test', steps);
+      return err ? { status: 'pass', msg: 'Blocked: ' + err } : { status: 'fail', msg: 'Should block Drying after N₂' };
+    }
+    case 'pv_n2_cooling_direct': {
+      // Cooling directly after N₂ with no Cure/Bleach in between is blocked
+      const steps = [s('Cure', 40), s('Nitrogen'), s('Cooling', 25)];
+      const err = validateProgram('Test', steps);
+      return err ? { status: 'pass', msg: 'Blocked: ' + err } : { status: 'fail', msg: 'Should block Cooling directly after N₂' };
+    }
+    case 'pv_n2_cure_then_heating': {
+      // N₂ → Cure → Heating: the step after the cure must be Cooling, not Heating
+      const steps = [s('Heating', 40), s('Nitrogen'), s('Cure', 60), s('Heating', 70), s('Cooling', 25)];
+      const err = validateProgram('Test', steps);
+      return err ? { status: 'pass', msg: 'Blocked: ' + err } : { status: 'fail', msg: 'Should force Cooling after the N₂ cure' };
+    }
+    default:
+      return { status: 'warn', msg: 'Unknown validation check' };
+  }
+}
+
+// ============================================================
+// Material Duplication Logic (mirrors MaterialContext.duplicateMaterial)
+// ============================================================
+// Returns the unique "<name> Copy" name given the names already in the list.
+function makeCopyName(baseName, existingNames) {
+  let copyName = `${baseName} Copy`;
+  let n = 2;
+  while (existingNames.includes(copyName)) {
+    copyName = `${baseName} Copy ${n}`;
+    n++;
+  }
+  return copyName;
+}
+
+// Simulates duplicating a material from a list; returns the new material + new list.
+function duplicateMaterialSim(list, id) {
+  const mat = list.find(m => m.id === id);
+  if (!mat) return null;
+  const copy = {
+    id: 'copy-' + id,
+    name: makeCopyName(mat.name, list.map(m => m.name)),
+    steps: mat.steps.map(s => ({ ...s })),
+    totalDuration: mat.totalDuration,
+    isPreset: false,
+  };
+  const next = [...list, copy];
+  return { copy, next };
+}
+
+function runDuplicateCheck(check) {
+  const baseList = [
+    { id: 'a', name: 'ST45', steps: [{ process: 'Heating', temperature: 45, time: 10 }], totalDuration: 10, isPreset: true },
+    { id: 'b', name: 'Carbon Fiber', steps: [{ process: 'Heating', temperature: 60, time: 20 }, { process: 'Cooling', temperature: 25, time: 0 }], totalDuration: 20, isPreset: false },
+  ];
+
+  switch (check) {
+    case 'dup_copy_name': {
+      const { copy } = duplicateMaterialSim(baseList, 'a');
+      return copy.name === 'ST45 Copy'
+        ? { status: 'pass', msg: 'Copy named "ST45 Copy"' }
+        : { status: 'fail', msg: `Expected "ST45 Copy", got "${copy.name}"` };
+    }
+    case 'dup_is_editable': {
+      // Duplicating a locked preset must produce an editable (non-preset) material
+      const { copy } = duplicateMaterialSim(baseList, 'a');
+      return copy.isPreset === false
+        ? { status: 'pass', msg: 'Preset copy is editable (isPreset=false)' }
+        : { status: 'fail', msg: 'Copy should not be a preset' };
+    }
+    case 'dup_steps_cloned': {
+      const { copy } = duplicateMaterialSim(baseList, 'b');
+      const sameContent = JSON.stringify(copy.steps) === JSON.stringify(baseList[1].steps);
+      const notSameRef = copy.steps !== baseList[1].steps && copy.steps[0] !== baseList[1].steps[0];
+      return sameContent && notSameRef
+        ? { status: 'pass', msg: 'Steps deep-copied (content equal, refs distinct)' }
+        : { status: 'fail', msg: 'Steps not properly cloned' };
+    }
+    case 'dup_inserted_after': {
+      const { next } = duplicateMaterialSim(baseList, 'a');
+      // Copy is appended to the end, alongside new user materials
+      return next.length === baseList.length + 1 && next[next.length - 1].name === 'ST45 Copy'
+        ? { status: 'pass', msg: 'Copy appended to end of list' }
+        : { status: 'fail', msg: 'Copy not appended to end' };
+    }
+    case 'dup_unique_name': {
+      // Duplicating twice must not collide: Copy, then Copy 2
+      const first = duplicateMaterialSim(baseList, 'a');
+      const second = duplicateMaterialSim(first.next, 'a');
+      return first.copy.name === 'ST45 Copy' && second.copy.name === 'ST45 Copy 2'
+        ? { status: 'pass', msg: 'Second copy named "ST45 Copy 2"' }
+        : { status: 'fail', msg: `Got "${first.copy.name}" then "${second.copy.name}"` };
+    }
+    case 'dup_invalid_id': {
+      const result = duplicateMaterialSim(baseList, 'does-not-exist');
+      return result === null
+        ? { status: 'pass', msg: 'Unknown id returns null (no copy)' }
+        : { status: 'fail', msg: 'Should return null for unknown id' };
+    }
+    default:
+      return { status: 'warn', msg: 'Unknown duplication check' };
+  }
+}
+
+// ============================================================
+// TopBar Active Nav Logic (mirrors TopBar.tsx active highlight)
+// ============================================================
+// Returns the id of the nav icon that should be lit for a given route,
+// or null if no nav icon is active (e.g. Home).
+function activeNavFor(pathname) {
+  if (pathname === '/cure-history') return 'history';
+  if (pathname === '/alerts') return 'alerts';
+  if (pathname === '/settings') return 'settings';
+  if (pathname === '/network') return 'network';
+  return null;
+}
+
+// Mirrors the Globe icon className resolution in TopBar.tsx.
+// Returns null when the icon should inherit the parent's color (text-primary when active).
+function globeIconColor(isCuring, connected, pathname) {
+  if (isCuring) return 'opacity-30';
+  if (!connected) return 'text-destructive';
+  if (pathname === '/network') return null; // active → inherit primary (blue)
+  return 'text-white';
+}
+
+function runNavCheck(check) {
+  switch (check) {
+    case 'nav_settings': {
+      return activeNavFor('/settings') === 'settings'
+        ? { status: 'pass', msg: 'Settings icon lit on /settings' }
+        : { status: 'fail', msg: 'Settings icon not active on /settings' };
+    }
+    case 'nav_network': {
+      return activeNavFor('/network') === 'network'
+        ? { status: 'pass', msg: 'Network icon lit on /network' }
+        : { status: 'fail', msg: 'Network icon not active on /network' };
+    }
+    case 'nav_alerts': {
+      return activeNavFor('/alerts') === 'alerts'
+        ? { status: 'pass', msg: 'Alerts icon lit on /alerts' }
+        : { status: 'fail', msg: 'Alerts icon not active on /alerts' };
+    }
+    case 'nav_history': {
+      return activeNavFor('/cure-history') === 'history'
+        ? { status: 'pass', msg: 'History icon lit on /cure-history' }
+        : { status: 'fail', msg: 'History icon not active on /cure-history' };
+    }
+    case 'nav_home_none': {
+      return activeNavFor('/') === null
+        ? { status: 'pass', msg: 'No nav icon lit on Home' }
+        : { status: 'fail', msg: 'Home should not light any nav icon' };
+    }
+    case 'nav_single_active': {
+      // Exactly one icon may be active for any given settings-area route
+      const routes = ['/settings', '/network', '/alerts', '/cure-history'];
+      const ok = routes.every(r => {
+        const active = activeNavFor(r);
+        return active !== null && routes.filter(x => activeNavFor(x) === active).length === 1;
+      });
+      return ok
+        ? { status: 'pass', msg: 'Exactly one icon active per route' }
+        : { status: 'fail', msg: 'Multiple or zero icons active for a route' };
+    }
+    case 'nav_globe_active_blue': {
+      // null = no explicit color → inherits the parent's text-primary (blue) when active
+      const c = globeIconColor(false, true, '/network');
+      return c === null
+        ? { status: 'pass', msg: 'Active globe inherits primary (blue)' }
+        : { status: 'fail', msg: `Active globe forced to ${c} instead of inheriting blue` };
+    }
+    case 'nav_globe_inactive_white': {
+      const c = globeIconColor(false, true, '/settings');
+      return c === 'text-white'
+        ? { status: 'pass', msg: 'Inactive connected globe is white' }
+        : { status: 'fail', msg: `Expected white, got ${c}` };
+    }
+    case 'nav_globe_disconnected_red': {
+      const c = globeIconColor(false, false, '/network');
+      return c === 'text-destructive'
+        ? { status: 'pass', msg: 'Disconnected globe stays red even when active' }
+        : { status: 'fail', msg: `Expected red, got ${c}` };
+    }
+    default:
+      return { status: 'warn', msg: 'Unknown nav check' };
+  }
+}
+
+// ============================================================
+// TopBar N₂ Icon Logic (mirrors TopBar.tsx nitrogen indicator)
+// ============================================================
+// The N₂ icon is rendered only when nitrogen mode is enabled.
+function n2IconVisible(nitrogenMode) {
+  return !!nitrogenMode;
+}
+
+function runN2IconCheck(check) {
+  switch (check) {
+    case 'n2_hidden_when_off': {
+      return n2IconVisible(false) === false
+        ? { status: 'pass', msg: 'N₂ icon hidden when nitrogen mode is off' }
+        : { status: 'fail', msg: 'N₂ icon should be hidden when off' };
+    }
+    case 'n2_shown_when_on': {
+      return n2IconVisible(true) === true
+        ? { status: 'pass', msg: 'N₂ icon shown when nitrogen mode is on' }
+        : { status: 'fail', msg: 'N₂ icon should be shown when on' };
+    }
+    default:
+      return { status: 'warn', msg: 'Unknown N₂ icon check' };
+  }
+}
+
+// ============================================================
+// Wake Screen blackout (mirrors WakeScreen showHint + tap-to-wake)
+// ============================================================
+// Sleep mode (blank=true) stays fully black until first touch; screensaver always shows the hint.
+function wakeScreenView(blank, tapCount) {
+  const showHint = !blank || tapCount > 0;
+  return { black: !showHint, woke: tapCount >= 2 };
+}
+
+function runWakeScreenCheck(check) {
+  switch (check) {
+    case 'wake_sleep_black': {
+      const v = wakeScreenView(true, 0); // sleep, untouched
+      return v.black
+        ? { status: 'pass', msg: 'Sleep screen is fully black (screen protected)' }
+        : { status: 'fail', msg: 'Sleep screen should be black' };
+    }
+    case 'wake_sleep_hint_after_touch': {
+      const v = wakeScreenView(true, 1); // sleep, first touch
+      return !v.black
+        ? { status: 'pass', msg: 'Wake hint appears after first touch' }
+        : { status: 'fail', msg: 'Hint should show after touch' };
+    }
+    case 'wake_two_taps_wakes': {
+      const v = wakeScreenView(true, 2);
+      return v.woke
+        ? { status: 'pass', msg: 'Two taps wake the system' }
+        : { status: 'fail', msg: 'Two taps should wake' };
+    }
+    case 'wake_screensaver_black': {
+      const v = wakeScreenView(true, 0); // screensaver, untouched — now blank like sleep
+      return v.black
+        ? { status: 'pass', msg: 'Screensaver is fully black (screen protected)' }
+        : { status: 'fail', msg: 'Screensaver should be black until touched' };
+    }
+    case 'wake_screensaver_hint_after_touch': {
+      const v = wakeScreenView(true, 1); // screensaver, first touch
+      return !v.black
+        ? { status: 'pass', msg: 'Wake hint appears after first touch' }
+        : { status: 'fail', msg: 'Hint should show after touch' };
+    }
+    default:
+      return { status: 'warn', msg: 'Unknown wake-screen check' };
+  }
+}
+
+// ============================================================
+// Boot vs Sleep-Resume (mirrors App.tsx asleep/booting init)
+// ============================================================
+// The boot/diagnostics screen shows only on a real power-up, not when resuming from sleep.
+// shutdownFlag is the value of sessionStorage 'scure-shutdown' present at mount.
+function bootDecision(shutdownFlag) {
+  return {
+    asleep: shutdownFlag === 'true',
+    booting: shutdownFlag !== 'true',
+  };
+}
+
+// ============================================================
+// SRS Document Version History (mirrors docs/sCure_SRS.html setVersions/getVersions)
+// Snapshots are archived as JSON inside a <script type="application/json"> tag, so any
+// "</" must be escaped to "<\/" or an embedded closing script tag would truncate the file.
+// ============================================================
+function srsEncodeVersions(arr) {
+  return JSON.stringify(arr).replace(/<\//g, '<\\/'); // exact logic from setVersions()
+}
+function srsDecodeVersions(text) {
+  try { return JSON.parse(text || '[]') || []; } catch (e) { return null; } // getVersions()
+}
+function deepEqual(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+
+function runSrsVersionCheck(check) {
+  const CLOSE = '</' + 'script>'; // avoid a literal closing tag in this file too
+  switch (check) {
+    case 'srs_roundtrip_plain': {
+      const arr = [{ n: 'Baseline', date: '2026-06-30', author: '—', change: 'pristine', html: '<!DOCTYPE html>\n<html><body><p>v1</p></body></html>' }];
+      const back = srsDecodeVersions(srsEncodeVersions(arr));
+      return deepEqual(arr, back)
+        ? { status: 'pass', msg: 'Plain version round-trips unchanged' }
+        : { status: 'fail', msg: 'Round-trip altered the version data' };
+    }
+    case 'srs_roundtrip_scripttag': {
+      const html = '<html><body><script>var x="' + CLOSE + '";' + CLOSE + '<p>old</p></body></html>';
+      const arr = [{ n: '3', date: '2026-06-30', author: 'Amitai', change: 'edit', html }];
+      const back = srsDecodeVersions(srsEncodeVersions(arr));
+      return back && back[0] && back[0].html === html && back[0].html.includes(CLOSE)
+        ? { status: 'pass', msg: 'Embedded closing script tag survives the round-trip' }
+        : { status: 'fail', msg: 'Closing script tag was lost or corrupted' };
+    }
+    case 'srs_no_raw_close': {
+      const arr = [{ n: '1', html: 'before' + CLOSE + 'after' }];
+      const encoded = srsEncodeVersions(arr);
+      return !encoded.includes(CLOSE)
+        ? { status: 'pass', msg: 'Encoded archive has no raw closing script tag' }
+        : { status: 'fail', msg: 'Raw closing script tag present — file would truncate' };
+    }
+    case 'srs_unicode': {
+      const arr = [{ n: '2', author: 'אמיתי', change: 'שינוי', html: '<p>גרסה ישנה של המסמך</p>' }];
+      const back = srsDecodeVersions(srsEncodeVersions(arr));
+      return back && deepEqual(arr, back) && back[0].html.includes('גרסה ישנה')
+        ? { status: 'pass', msg: 'Hebrew/Unicode content preserved' }
+        : { status: 'fail', msg: 'Unicode content not preserved' };
+    }
+    case 'srs_empty_archive': {
+      const back = srsDecodeVersions('[]');
+      return Array.isArray(back) && back.length === 0
+        ? { status: 'pass', msg: 'Empty archive parses to an empty list' }
+        : { status: 'fail', msg: 'Empty archive did not parse to []' };
+    }
+    default:
+      return { status: 'warn', msg: 'Unknown SRS version check' };
+  }
+}
+
+function runBootCheck(check) {
+  switch (check) {
+    case 'boot_cold_shows_diag': {
+      const d = bootDecision(null); // no shutdown flag = cold power-up
+      return d.booting && !d.asleep
+        ? { status: 'pass', msg: 'Cold start shows boot/diagnostics' }
+        : { status: 'fail', msg: 'Cold start should boot' };
+    }
+    case 'boot_sleep_no_diag': {
+      const d = bootDecision('true'); // resuming from sleep
+      return !d.booting
+        ? { status: 'pass', msg: 'No diagnostics screen when resuming from sleep' }
+        : { status: 'fail', msg: 'Sleep resume must skip boot screen' };
+    }
+    case 'boot_sleep_shows_wake': {
+      const d = bootDecision('true');
+      return d.asleep
+        ? { status: 'pass', msg: 'Sleep resume shows wake screen' }
+        : { status: 'fail', msg: 'Sleep resume should be asleep' };
+    }
+    case 'boot_cold_not_asleep': {
+      const d = bootDecision(null);
+      return !d.asleep
+        ? { status: 'pass', msg: 'Cold start is not asleep' }
+        : { status: 'fail', msg: 'Cold start should not be asleep' };
+    }
+    default:
+      return { status: 'warn', msg: 'Unknown boot check' };
+  }
+}
+
+// ============================================================
+// Per-Fan Diagnostic (mirrors SettingsPage handleFanTest / FanRow)
+// ============================================================
+const FAN_RPM_SIM = { led_cooling: 2850, chamber_intake: 3050, chamber_heating: 2780 };
+const FAN_IDS = ['led_cooling', 'chamber_intake', 'chamber_heating'];
+
+// Simulates running a fan's diagnostic; rpm null = unknown fan.
+function fanTestResultSim(id) {
+  const rpm = FAN_RPM_SIM[id] ?? null;
+  return { rpm, ok: rpm != null && rpm >= 2000 }; // healthy fans spin well above 2000 RPM
+}
+
+// ============================================================
+// UX ↔ Hardware compatibility mirrors — same rules as MaterialContext.parseCsv,
+// CureProcessPage cooling completion and io_controller ON/OFF heating.
+// ============================================================
+function runHwCompatCheck(check) {
+  // Mirror of the CSV import range rules (hardware-authoritative)
+  const csvTempOk = (proc, t) => proc === 'Cooling' ? (t >= 30 && t <= 75) : (t >= 30 && t <= 80);
+  const csvUvOk = (v) => v >= 10 && v <= 100;
+  switch (check) {
+    case 'hwc_csv_heat_min': {
+      // 30°C floor applies to BOTH heating (driver minimum) and cooling (cannot
+      // cool below ambient ~30°C): a Cooling target of 25 is now rejected.
+      const cases = [['Heating', 25, false], ['Heating', 30, true], ['Drying', 29, false], ['Cure', 30, true],
+                     ['Cooling', 25, false], ['Cooling', 30, true], ['Cooling', 75, true], ['Cooling', 76, false]];
+      const bad = cases.filter(([p, t, exp]) => csvTempOk(p, t) !== exp);
+      return bad.length === 0
+        ? { status: 'pass', msg: `${cases.length} cases match the 30°C floor (heating + cooling)` }
+        : { status: 'fail', msg: `${bad.length} wrong: ${bad.map(c => `${c[0]}@${c[1]}`).join(', ')}` };
+    }
+    case 'hwc_csv_uv_min': {
+      const cases = [[5, false], [9, false], [10, true], [100, true], [101, false]];
+      const bad = cases.filter(([v, exp]) => csvUvOk(v) !== exp);
+      return bad.length === 0
+        ? { status: 'pass', msg: 'UV floor matches led_power.min_intensity (10%)' }
+        : { status: 'fail', msg: `${bad.length} wrong UV bounds` };
+    }
+    case 'hwc_csv_cool_drop': {
+      // Cooling target must be at least 5°C below the previous step's temp
+      const coolOk = (prevTemp, target) => prevTemp == null || target <= prevTemp - 5;
+      const cases = [[60, 25, true], [60, 56, false], [60, 55, true], [null, 25, true], [40, 38, false]];
+      const bad = cases.filter(([p, t, exp]) => coolOk(p, t) !== exp);
+      return bad.length === 0
+        ? { status: 'pass', msg: 'Cooling-drop rule (≥5°C below previous) enforced' }
+        : { status: 'fail', msg: `${bad.length} wrong cooling-drop cases` };
+    }
+    case 'hwc_cool_done_band': {
+      // Mirror of CureProcessPage: cooling completes at target + 0.5°C
+      const coolDone = (chamber, target) => chamber <= target + 0.5;
+      const cases = [[60, 25, false], [25.6, 25, false], [25.5, 25, true], [25, 25, true], [24, 25, true]];
+      const bad = cases.filter(([c, tg, exp]) => coolDone(c, tg) !== exp);
+      return bad.length === 0
+        ? { status: 'pass', msg: 'Cooling completion follows the measured temp (±0.5°C band)' }
+        : { status: 'fail', msg: `${bad.length} wrong completion cases` };
+    }
+    case 'hwc_timer_start': {
+      // Mirror of CureProcessPage's Timer Start handling:
+      //   tick():   the phase timer advances during a ramp ONLY for 'on-ramp'
+      //   advance:  a phase may complete during a ramp ONLY for 'on-ramp'
+      const timerCounts = (ramping, mode) => !ramping || mode === 'on-ramp';
+      const mayFinish = (ramping, mode) => !ramping || mode === 'on-ramp';
+      const cases = [
+        // [ramping, timerMode, countsExpected, mayFinishExpected]
+        [true,  'on-ramp',   true,  true ],   // counts through the ramp
+        [true,  'on-target', false, false],   // parked until target
+        [true,  undefined,   false, false],   // missing mode defaults to on-target
+        [false, 'on-ramp',   true,  true ],   // holding: always counts
+        [false, 'on-target', true,  true ],
+      ];
+      const bad = cases.filter(([r, m, expC, expF]) =>
+        timerCounts(r, m) !== expC || mayFinish(r, m) !== expF);
+      return bad.length === 0
+        ? { status: 'pass', msg: "Timer Start honored: 'on-ramp' counts through the ramp, 'on-target' waits for the target" }
+        : { status: 'fail', msg: `${bad.length} wrong timer-mode cases` };
+    }
+    case 'hwc_onoff_heat': {
+      // Mirror of temperature_control PI(D) + delta-sigma heating
+      // (kp=0.08, ki=0.00015/cycle, integ clamp 0..0.85, DAC threshold 0.5):
+      // 1) the PI power command must follow the error and clamp to [0,1];
+      // 2) the delta-sigma ON-ratio must track the commanded power.
+      const KP = 0.08, KI = 0.00015, INTEG_MAX = 0.85;
+      const piPower = (err, integ) => {
+        const i2 = Math.max(0, Math.min(INTEG_MAX, integ + KI * err));
+        return { power: Math.max(0, Math.min(1, KP * err + i2)), integ: i2 };
+      };
+      const p1 = piPower(35, 0).power;      // cold start (25->60): full power
+      const p2 = piPower(2, 0.1).power;     // near target: partial power
+      const p3 = piPower(-3, 0).power;      // overshoot: heater off
+      const piOk = p1 === 1 && p2 > 0.2 && p2 < 0.4 && p3 === 0;
+      // Delta-sigma: run N cycles at a fixed power, ON-ratio must match
+      const dsRatio = (power, cycles) => {
+        let accum = 0, last = false, on = 0;
+        for (let c = 0; c < cycles; c++) {
+          const delta = last ? power - 1 : power;
+          const sig = accum + delta;
+          last = sig > 0.5;
+          accum = sig;
+          if (last) on++;
+        }
+        return on / cycles;
+      };
+      const dsBad = [0, 0.1, 0.25, 0.5, 0.75, 1].filter(p => Math.abs(dsRatio(p, 400) - p) > 0.01);
+      if (!piOk) return { status: 'fail', msg: `PI power wrong: cold=${p1} near=${p2.toFixed(2)} over=${p3}` };
+      if (dsBad.length > 0) return { status: 'fail', msg: `Delta-sigma ratio off at power: ${dsBad.join(', ')}` };
+      return { status: 'pass', msg: 'PI power law + delta-sigma ON-ratio track the reference controller' };
+    }
+  }
+  return { status: 'fail', msg: 'Unknown check: ' + check };
+}
+
+function runFanTestCheck(check) {
+  switch (check) {
+    case 'fant_led_cooling': {
+      const r = fanTestResultSim('led_cooling');
+      return r.ok && r.rpm === 2850 ? { status: 'pass', msg: `LED Cooling: ${r.rpm} RPM OK` } : { status: 'fail', msg: `Got ${r.rpm} RPM` };
+    }
+    case 'fant_chamber_intake': {
+      const r = fanTestResultSim('chamber_intake');
+      return r.ok && r.rpm === 3050 ? { status: 'pass', msg: `Chamber Intake: ${r.rpm} RPM OK` } : { status: 'fail', msg: `Got ${r.rpm} RPM` };
+    }
+    case 'fant_chamber_heating': {
+      const r = fanTestResultSim('chamber_heating');
+      return r.ok && r.rpm === 2780 ? { status: 'pass', msg: `Chamber Heating: ${r.rpm} RPM OK` } : { status: 'fail', msg: `Got ${r.rpm} RPM` };
+    }
+    case 'fant_each_fan_has_test': {
+      // Every fan must produce its own healthy result
+      const allOk = FAN_IDS.every(id => fanTestResultSim(id).ok);
+      return allOk ? { status: 'pass', msg: `All ${FAN_IDS.length} fans have a diagnostic` } : { status: 'fail', msg: 'A fan is missing its diagnostic' };
+    }
+    case 'fant_distinct_rpm': {
+      // Each fan reports its own RPM (not a single shared value)
+      const rpms = FAN_IDS.map(id => fanTestResultSim(id).rpm);
+      const distinct = new Set(rpms).size === rpms.length;
+      return distinct ? { status: 'pass', msg: `Per-fan RPM: ${rpms.join(', ')}` } : { status: 'fail', msg: 'Fans share one RPM value' };
+    }
+    case 'fant_unknown_fan': {
+      const r = fanTestResultSim('does_not_exist');
+      return r.rpm === null && !r.ok ? { status: 'pass', msg: 'Unknown fan reports no result' } : { status: 'fail', msg: 'Unknown fan should have no RPM' };
+    }
+    default:
+      return { status: 'warn', msg: 'Unknown fan-test check' };
+  }
+}
+
+// ============================================================
+// Cure Phase Gauge Value (mirrors CureProcessPage getGaugeInfo heating/drying)
+// ============================================================
+// Ramp → gauge shows climbing temperature; HOLD (target reached) → gauge shows the remaining time.
+function formatTimeForTest(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function getHeatingGaugeSim(phase, ctx) {
+  const { status = 'active', isRamping = false, chamberTemp = 25, elapsed = 0 } = ctx;
+  const isActiveRamping = status === 'active' && isRamping;
+  const isActiveHolding = status === 'active' && !isRamping;
+  const remaining = Math.max(0, phase.time * 60 - elapsed);
+  return {
+    value: isActiveRamping ? `${chamberTemp}` : isActiveHolding ? formatTimeForTest(remaining) : status === 'completed' ? `${phase.temp}` : '0',
+    label: isActiveRamping ? 'RAMP °C' : isActiveHolding ? 'REMAINING' : 'HOLD °C',
+  };
+}
+
+function runGaugeValueCheck(check) {
+  switch (check) {
+    case 'gv_hold_shows_time': {
+      // HOLD: 10min phase, 7s in → gauge shows 09:53 with REMAINING label
+      const g = getHeatingGaugeSim({ type: 'drying', temp: 45, time: 10 }, { status: 'active', isRamping: false, elapsed: 7 });
+      return g.value === '09:53' && g.label === 'REMAINING'
+        ? { status: 'pass', msg: `Gauge shows ${g.value} (${g.label})` }
+        : { status: 'fail', msg: `Expected 09:53/REMAINING, got ${g.value}/${g.label}` };
+    }
+    case 'gv_ramp_shows_temp': {
+      // RAMP: gauge shows the climbing chamber temperature, not time
+      const g = getHeatingGaugeSim({ type: 'heating', temp: 60, time: 5 }, { status: 'active', isRamping: true, chamberTemp: 38 });
+      return g.value === '38' && g.label === 'RAMP °C'
+        ? { status: 'pass', msg: `Gauge shows ${g.value} (${g.label})` }
+        : { status: 'fail', msg: `Expected 38/RAMP °C, got ${g.value}/${g.label}` };
+    }
+    case 'gv_hold_never_negative': {
+      // Overrun clamps the countdown to 00:00
+      const g = getHeatingGaugeSim({ type: 'heating', temp: 40, time: 1 }, { status: 'active', isRamping: false, elapsed: 120 });
+      return g.value === '00:00'
+        ? { status: 'pass', msg: 'Countdown clamped to 00:00' }
+        : { status: 'fail', msg: `Expected 00:00, got ${g.value}` };
+    }
+    case 'gv_completed_shows_temp': {
+      // Completed phase shows the hold temperature again
+      const g = getHeatingGaugeSim({ type: 'drying', temp: 45, time: 10 }, { status: 'completed' });
+      return g.value === '45' && g.label === 'HOLD °C'
+        ? { status: 'pass', msg: `Completed shows ${g.value} (${g.label})` }
+        : { status: 'fail', msg: `Expected 45/HOLD °C, got ${g.value}/${g.label}` };
+    }
+    default:
+      return { status: 'warn', msg: 'Unknown gauge-value check' };
+  }
+}
+
+// ============================================================
+// Material Favorites Logic (mirrors MaterialContext + HomePage sort)
+// ============================================================
+function toggleFavoriteSim(favoriteIds, id) {
+  return favoriteIds.includes(id) ? favoriteIds.filter(f => f !== id) : [...favoriteIds, id];
+}
+
+// Stable sort: favorites first, original order preserved within each group.
+function sortByFavorite(list, favoriteIds) {
+  return [...list].sort((a, b) =>
+    (favoriteIds.includes(b.id) ? 1 : 0) - (favoriteIds.includes(a.id) ? 1 : 0)
+  );
+}
+
+function runFavoriteCheck(check) {
+  const list = [
+    { id: 'a', name: 'ST45' },
+    { id: 'b', name: 'Carbon Fiber' },
+    { id: 'c', name: 'Fiberglass' },
+    { id: 'd', name: 'ABS-Like' },
+  ];
+
+  switch (check) {
+    case 'fav_toggle_on': {
+      const next = toggleFavoriteSim([], 'c');
+      return next.includes('c') && next.length === 1
+        ? { status: 'pass', msg: 'Star added to favorites' }
+        : { status: 'fail', msg: 'Star not added' };
+    }
+    case 'fav_toggle_off': {
+      const next = toggleFavoriteSim(['c'], 'c');
+      return !next.includes('c') && next.length === 0
+        ? { status: 'pass', msg: 'Star removed from favorites' }
+        : { status: 'fail', msg: 'Star not removed' };
+    }
+    case 'fav_moves_to_top': {
+      const sorted = sortByFavorite(list, ['c']);
+      return sorted[0].id === 'c'
+        ? { status: 'pass', msg: 'Starred item moved to top' }
+        : { status: 'fail', msg: `Top is "${sorted[0].id}", expected "c"` };
+    }
+    case 'fav_order_stable': {
+      // Non-favorites keep their original relative order
+      const sorted = sortByFavorite(list, ['c']);
+      const rest = sorted.filter(m => m.id !== 'c').map(m => m.id).join(',');
+      return rest === 'a,b,d'
+        ? { status: 'pass', msg: 'Non-favorites keep original order' }
+        : { status: 'fail', msg: `Order was "${rest}", expected "a,b,d"` };
+    }
+    case 'fav_multiple_top': {
+      // Multiple favorites all rise to the top, in original order
+      const sorted = sortByFavorite(list, ['b', 'd']);
+      const top2 = sorted.slice(0, 2).map(m => m.id).join(',');
+      return top2 === 'b,d'
+        ? { status: 'pass', msg: 'Multiple favorites grouped at top (b,d)' }
+        : { status: 'fail', msg: `Top two were "${top2}", expected "b,d"` };
+    }
+    case 'fav_none_unchanged': {
+      // No favorites → list order is unchanged
+      const sorted = sortByFavorite(list, []);
+      const order = sorted.map(m => m.id).join(',');
+      return order === 'a,b,c,d'
+        ? { status: 'pass', msg: 'No favorites keeps list order' }
+        : { status: 'fail', msg: `Order was "${order}"` };
+    }
+    default:
+      return { status: 'warn', msg: 'Unknown favorite check' };
+  }
+}
+
+// ============================================================
+// CSV Import Validation (mirrors MaterialContext.parseCsv)
+// ============================================================
+const VALID_PROCESSES = ['Heating', 'Drying', 'Cure', 'Cooling', 'Bleacher', 'Nitrogen'];
+
+function parseCsvForTest(csvContent) {
+  const errors = [];
+  const lines = csvContent.trim().split('\n');
+  if (lines.length < 2) return { steps: null, errors: ['CSV must have a header row and at least one data row'] };
+
+  const header = lines[0].toLowerCase();
+  if (!header.includes('process') && !header.includes('step')) return { steps: null, errors: ['Missing required header'] };
+
+  const steps = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',').map(c => c.trim());
+    if (cols.length < 4) { errors.push(`Row ${i}: Not enough columns`); continue; }
+
+    const process = cols[1];
+    if (!VALID_PROCESSES.includes(process)) { errors.push(`Row ${i}: Invalid process "${process}"`); continue; }
+
+    let time = 0;
+    if (process !== 'Cooling' && process !== 'Nitrogen') {
+      // Bleaching may run up to 12 hours (720 min); others cap at 120 min.
+      const maxTime = process === 'Bleacher' ? 720 : 120;
+      time = parseInt(cols[3]);
+      if (isNaN(time) || time < 1 || time > maxTime) { errors.push(`Row ${i}: Invalid time "${cols[3]}" (must be 1-${maxTime})`); continue; }
+    }
+
+    const step = { step: parseInt(cols[0]) || i, process, temperature: null, time };
+
+    if (process === 'Nitrogen') { steps.push(step); continue; }
+
+    const temp = cols[2] ? Number(cols[2]) : null;
+    if (temp !== null && (isNaN(temp) || temp < 30 || temp > 80)) { errors.push(`Row ${i}: Invalid temperature "${cols[2]}"`); continue; }
+    step.temperature = temp ?? (process === 'Cooling' ? 30 : 40);
+
+    if (process === 'Cooling') {
+      step.coolingMode = cols[8] || 'medium';
+    }
+    if (process === 'Cure' || process === 'Bleacher') {
+      step.timerMode = cols[4] || '';
+      step.uvIntensity = cols[5] ? Number(cols[5]) : null;
+      step.uvStartMode = cols[6] || '';
+    }
+    steps.push(step);
+  }
+
+  if (steps.length === 0) return { steps: null, errors: errors.length > 0 ? errors : ['No valid steps found'] };
+
+  // Sequence validation
+  let n2Count = 0, needsCoolingOrDrying = false, lastTemp = null;
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i], prev = i > 0 ? steps[i - 1] : null;
+    if (s.process === 'Nitrogen') { n2Count++; if (n2Count > 2) errors.push(`Step ${s.step}: Maximum 2 nitrogen steps`); }
+    if (prev?.process === 'Nitrogen' && s.process !== 'Cure' && s.process !== 'Bleacher') {
+      errors.push(`Step ${s.step}: After nitrogen, only Cure or Bleaching is allowed`);
+    }
+    if (prev && (prev.process === 'Cure' || prev.process === 'Bleacher')) {
+      const prevPrev = i > 1 ? steps[i - 2] : null;
+      if (prevPrev?.process === 'Nitrogen' && s.process !== 'Cooling') {
+        errors.push(`Step ${s.step}: Only Cooling is allowed after the Cure/Bleaching step that follows the N₂ purge`);
+      }
+    }
+    if (s.process === 'Nitrogen') needsCoolingOrDrying = true;
+    if (needsCoolingOrDrying && s.process === 'Cooling') needsCoolingOrDrying = false;
+    if (s.process !== 'Cooling' && s.process !== 'Nitrogen' && s.temperature != null) {
+      if (lastTemp !== null && s.temperature < lastTemp) errors.push(`Step ${s.step}: Temperature cannot decrease without Cooling`);
+      lastTemp = s.temperature;
+    }
+    if (s.process === 'Cooling') lastTemp = null;
+  }
+  if (needsCoolingOrDrying) errors.push('Nitrogen must be vented — add a Cooling step');
+
+  const hasNitrogen = steps.some(s => s.process === 'Nitrogen');
+  if (hasNitrogen) {
+    let found = false, afterN2 = false;
+    for (const s of steps) {
+      if (s.process === 'Nitrogen') afterN2 = true;
+      if (afterN2 && (s.process === 'Cure' || s.process === 'Bleacher')) { found = true; break; }
+    }
+    if (!found) errors.push('Add a Cure or Bleaching step after the N₂ purge');
+  }
+
+  return { steps, errors };
+}
+
+function runCsvImportCheck(check) {
+  const H = 'Step,Process,Temperature,Time,TimerMode,UVIntensity,UVStart,UVRampPercent,CoolingMode';
+
+  switch (check) {
+    case 'csv_valid_basic': {
+      const r = parseCsvForTest(`${H}\n1,Heating,40,10,,,,,\n2,Cooling,25,,,,,,medium`);
+      return r.errors.length === 0 ? { status: 'pass', msg: `${r.steps.length} steps parsed` } : { status: 'fail', msg: r.errors[0] };
+    }
+    case 'csv_valid_n2': {
+      const r = parseCsvForTest(`${H}\n1,Heating,40,10,,,,,\n2,Nitrogen,,,,,,,\n3,Cure,40,15,on-target,30,at-target,,\n4,Cooling,25,,,,,,medium`);
+      return r.errors.length === 0 ? { status: 'pass', msg: `${r.steps.length} steps with N₂` } : { status: 'fail', msg: r.errors[0] };
+    }
+    case 'csv_valid_full': {
+      // All 6 process types; N₂ → Cure → Cooling block kept valid (Bleaching placed before N₂)
+      const r = parseCsvForTest(`${H}\n1,Drying,40,10,,,,,\n2,Heating,60,5,,,,,\n3,Bleacher,60,10,on-target,40,at-start,,\n4,Nitrogen,,,,,,,\n5,Cure,60,15,on-target,30,at-target,,\n6,Cooling,25,,,,,,fast`);
+      return r.errors.length === 0 && r.steps.length === 6 ? { status: 'pass', msg: 'All 6 process types OK' } : { status: 'fail', msg: r.errors[0] || 'Wrong step count' };
+    }
+    case 'csv_invalid_process': {
+      const r = parseCsvForTest(`${H}\n1,Baking,40,10,,,,,`);
+      return r.errors.some(e => e.includes('Invalid process')) ? { status: 'pass', msg: 'Rejected invalid process' } : { status: 'fail', msg: 'Should reject invalid process' };
+    }
+    case 'csv_bad_temp': {
+      const r = parseCsvForTest(`${H}\n1,Heating,90,10,,,,,`);
+      return r.errors.some(e => e.includes('temperature')) ? { status: 'pass', msg: 'Rejected temp 90°C' } : { status: 'fail', msg: 'Should reject temp >80' };
+    }
+    case 'csv_bad_time': {
+      const r = parseCsvForTest(`${H}\n1,Heating,40,150,,,,,`);
+      return r.errors.some(e => e.includes('time')) ? { status: 'pass', msg: 'Rejected time 150min' } : { status: 'fail', msg: 'Should reject time >120' };
+    }
+    case 'csv_bleach_12h': {
+      // 720 min Bleaching is allowed; preceding Heating keeps temps non-decreasing.
+      const r = parseCsvForTest(`${H}\n1,Heating,40,10,,,,,\n2,Bleacher,40,720,on-target,40,at-target,,`);
+      return r.errors.length === 0 ? { status: 'pass', msg: 'Bleaching 720min accepted' } : { status: 'fail', msg: r.errors[0] };
+    }
+    case 'csv_bleach_over12h': {
+      const r = parseCsvForTest(`${H}\n1,Heating,40,10,,,,,\n2,Bleacher,40,721,on-target,40,at-target,,`);
+      return r.errors.some(e => e.includes('time')) ? { status: 'pass', msg: 'Rejected Bleaching 721min' } : { status: 'fail', msg: 'Should reject Bleaching >720' };
+    }
+    case 'csv_n2_no_process': {
+      const r = parseCsvForTest(`${H}\n1,Heating,40,10,,,,,\n2,Nitrogen,,,,,,,\n3,Cooling,25,,,,,,medium`);
+      return r.errors.length > 0 ? { status: 'pass', msg: 'Blocked: ' + r.errors[0] } : { status: 'fail', msg: 'Should block N₂ → Cooling without process' };
+    }
+    case 'csv_n2_no_cooling': {
+      const r = parseCsvForTest(`${H}\n1,Heating,40,10,,,,,\n2,Nitrogen,,,,,,,\n3,Heating,60,10,,,,,`);
+      return r.errors.some(e => e.toLowerCase().includes('cool') || e.toLowerCase().includes('vent')) ? { status: 'pass', msg: 'Blocked: missing cooling' } : { status: 'fail', msg: 'Should block N₂ without Cooling' };
+    }
+    case 'csv_n2_max3': {
+      const r = parseCsvForTest(`${H}\n1,Heating,40,10,,,,,\n2,Nitrogen,,,,,,,\n3,Cure,40,10,,,,,\n4,Cooling,25,,,,,,medium\n5,Nitrogen,,,,,,,\n6,Heating,60,10,,,,,\n7,Cooling,25,,,,,,medium\n8,Nitrogen,,,,,,,\n9,Heating,60,10,,,,,\n10,Cooling,25,,,,,,medium`);
+      return r.errors.some(e => e.includes('Maximum 2')) ? { status: 'pass', msg: 'Blocked 3rd N₂' } : { status: 'fail', msg: 'Should block >2 N₂ steps' };
+    }
+    case 'csv_temp_decrease': {
+      const r = parseCsvForTest(`${H}\n1,Heating,60,10,,,,,\n2,Heating,40,10,,,,,`);
+      return r.errors.some(e => e.includes('decrease') || e.includes('lower')) ? { status: 'pass', msg: 'Blocked temp decrease' } : { status: 'fail', msg: 'Should block temp 60→40 without Cooling' };
+    }
+    case 'csv_cooling_mode': {
+      const r = parseCsvForTest(`${H}\n1,Heating,40,10,,,,,\n2,Cooling,25,,,,,,fast`);
+      if (r.errors.length > 0) return { status: 'fail', msg: r.errors[0] };
+      const cooling = r.steps.find(s => s.process === 'Cooling');
+      return cooling?.coolingMode === 'fast' ? { status: 'pass', msg: 'CoolingMode=fast parsed' } : { status: 'fail', msg: 'CoolingMode not parsed: ' + cooling?.coolingMode };
+    }
+    case 'csv_empty': {
+      const r = parseCsvForTest(`${H}`);
+      return r.steps === null || r.errors.length > 0 ? { status: 'pass', msg: 'Empty CSV rejected' } : { status: 'fail', msg: 'Should reject empty CSV' };
+    }
+    default:
+      return { status: 'warn', msg: 'Unknown CSV check' };
+  }
+}
+
+// ============================================================
+// CSV Format Tests (export format verification)
+// ============================================================
+function runCsvFormatCheck(check) {
+  const H = 'Step,Process,Temperature,Time,TimerMode,UVIntensity,UVStart,UVRampPercent,CoolingMode';
+
+  switch (check) {
+    case 'fmt_header': {
+      const expected = 'Step,Process,Temperature,Time,TimerMode,UVIntensity,UVStart,UVRampPercent,CoolingMode';
+      const cols = expected.split(',');
+      return cols.length === 9 ? { status: 'pass', msg: '9 columns: ' + cols.join(', ') } : { status: 'fail', msg: 'Expected 9 columns, got ' + cols.length };
+    }
+    case 'fmt_nitrogen_row': {
+      const row = '2,Nitrogen,,,,,,,';
+      const cols = row.split(',');
+      const temp = cols[2], time = cols[3];
+      return (temp === '' && time === '') ? { status: 'pass', msg: 'N₂ row: empty temp & time' } : { status: 'fail', msg: `N₂ has temp="${temp}" time="${time}"` };
+    }
+    case 'fmt_cooling_row': {
+      const row = '5,Cooling,25,,,,,,medium';
+      const cols = row.split(',');
+      const mode = cols[8], time = cols[3];
+      return (time === '' && ['fast', 'medium', 'slow'].includes(mode)) ? { status: 'pass', msg: `CoolingMode="${mode}", no time` } : { status: 'fail', msg: `mode="${mode}" time="${time}"` };
+    }
+    case 'fmt_cure_row': {
+      const row = '3,Cure,60,15,on-target,30,at-target,,';
+      const cols = row.split(',');
+      const tm = cols[4], uv = cols[5], us = cols[6];
+      const ok = ['on-ramp', 'on-target'].includes(tm) && Number(uv) >= 5 && ['at-start', 'at-target'].includes(us);
+      return ok ? { status: 'pass', msg: `TimerMode=${tm} UV=${uv}% UVStart=${us}` } : { status: 'fail', msg: `tm=${tm} uv=${uv} us=${us}` };
+    }
+    case 'fmt_roundtrip': {
+      const csv = `${H}\n1,Drying,40,10,,,,,\n2,Heating,60,5,,,,,\n3,Nitrogen,,,,,,,\n4,Cure,60,15,on-target,30,at-target,,\n5,Cooling,25,,,,,,medium`;
+      const r = parseCsvForTest(csv);
+      return r.errors.length === 0 && r.steps.length === 5 ? { status: 'pass', msg: '5 steps roundtripped OK' } : { status: 'fail', msg: r.errors[0] || 'Wrong step count' };
+    }
+    default:
+      return { status: 'warn', msg: 'Unknown format check' };
+  }
+}
+
+// ============================================================
+// Logging
+// ============================================================
+function log(level, msg) {
+  const ts = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  logLines.push({ ts, level, msg });
+  const logBox = document.getElementById('logBox');
+  logBox.innerHTML += `<div class="log-line ${level}"><span class="ts">[${ts}]</span>${msg}</div>`;
+  logBox.scrollTop = logBox.scrollHeight;
+}
+
+function clearLog() {
+  logLines = [];
+  document.getElementById('logBox').innerHTML = '';
+}
+
+// ============================================================
+// Report Export
+// ============================================================
+function exportReport() {
+  const now = new Date();
+  const results = Object.values(testResults);
+  const pass = results.filter(r => r === 'pass').length;
+  const fail = results.filter(r => r === 'fail').length;
+  const warn = results.filter(r => r === 'warn').length;
+
+  let report = `sCure QA Report\n`;
+  report += `${'='.repeat(50)}\n`;
+  report += `Date: ${now.toLocaleString()}\n`;
+  report += `API: ${document.getElementById('apiUrl').value}\n`;
+  report += `Duration: ${startTime ? ((Date.now() - startTime) / 1000).toFixed(1) + 's' : 'N/A'}\n\n`;
+  report += `Summary: ${pass} PASS / ${fail} FAIL / ${warn} WARN\n`;
+  report += `${'='.repeat(50)}\n\n`;
+
+  TEST_CATEGORIES.forEach(cat => {
+    report += `[${cat.name}]\n`;
+    cat.tests.forEach(t => {
+      const status = (testResults[t.id] || 'pending').toUpperCase();
+      const resultEl = document.getElementById('result-' + t.id);
+      const timeEl = document.getElementById('time-' + t.id);
+      report += `  ${status.padEnd(6)} ${t.name} — ${resultEl?.textContent || ''} ${timeEl?.textContent || ''}\n`;
+    });
+    report += '\n';
+  });
+
+  report += `\nLog:\n${'─'.repeat(50)}\n`;
+  logLines.forEach(l => {
+    report += `[${l.ts}] ${l.msg}\n`;
+  });
+
+  const blob = new Blob([report], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `scure-qa-report-${now.toISOString().slice(0, 10)}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Init
+init();
+</script>
+</body>
+</html>

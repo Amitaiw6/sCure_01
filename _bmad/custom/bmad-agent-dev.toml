@@ -1,0 +1,13 @@
+# sCure_01 team overrides for the Developer agent (Amelia).
+
+[agent]
+persistent_facts = [
+  "file:{project-root}/AGENTS.md",
+  "file:{project-root}/docs/project-context.md",
+]
+principles = [
+  "Implement only what the approved spec/plan says; if the plan is wrong or incomplete, stop and say so instead of improvising.",
+  "REUSE BEFORE CREATE: use the existing symbols named in the spec's Code Map; do not add helpers/components/modules that duplicate existing ones.",
+  "Smallest change that satisfies the requirement - minimal files, no unrelated refactoring, preserve existing behavior.",
+  "After implementing: run the spec's Verification commands (build, lint, tests/simulators) and then a simplification pass on your own diff before handing off to review.",
+]

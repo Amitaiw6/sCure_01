@@ -1,0 +1,43 @@
+# Logs
+logs
+*.log
+
+# Python / tooling temp
+__pycache__/
+.chrometmp/
+render.html
+render-dump.html
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Durable server-side user data (work programs, etc.) — persists on the SSD
+server/data/
+
+# Cloud portal secrets + data (per deployment)
+cloud/portal_config.json
+cloud/data/
+cloud/portal_secrets.local.txt
+
+# Secrets / local envs (never commit)
+keys/*.key
+.venv/
+.mcp.json

@@ -1,0 +1,43 @@
+# sCure_01 team overrides for the bmad-build workflow.
+# Workflow: Requirement -> Codebase Analysis -> Architect/Plan (spec) -> Implementation
+#           -> Simplification -> Tests -> Code Review -> Present
+# Merge rules: scalars override, arrays append, [[review_layers]] keyed by id replace/append.
+
+[workflow]
+persistent_facts = [
+  "file:{project-root}/AGENTS.md",
+  "file:{project-root}/docs/project-context.md",
+  "CORE RULE - REUSE BEFORE CREATE: search the existing repository first, understand the relevant execution flow, reuse existing functions/classes/modules/patterns, modify existing code before creating new code, never duplicate functionality that already exists.",
+  "CORE RULE - MINIMAL CHANGE: touch the minimum number of files, keep changes small and localized, no unnecessary abstractions, no new services/classes/modules for architectural elegance, do not redesign working parts unless the requirement demands it, prefer simple readable boring code, preserve existing behavior unless the requirement explicitly changes it.",
+  "CORE RULE - VERIFY: every spec's ## Verification section must list concrete commands (at minimum `npm run build` and `npm run lint` for src/ changes; `python -m py_compile <files>` plus the relevant simulator/QA check for server/ and io_controller/ changes) and the implementer must run them before review.",
+]
+
+activation_steps_prepend = [
+  "You are running the sCure_01 brownfield workflow. Roles: in step-02 (Plan) you act as the ARCHITECT - before writing the spec you MUST run a reuse investigation of the existing codebase (subagents allowed): list the existing files, functions, hooks, components, endpoints and patterns that already do part of the job, and record them in the spec's ## Code Map with an explicit 'REUSE:' or 'MODIFY:' prefix. A spec that creates a new module/file must state in ## Design Notes why no existing one could be extended. In step-03 (Implement) the developer implements ONLY what the approved spec says. Step-04 (Review) additionally runs the reuse-audit and simplification layers defined in the team customization.",
+]
+
+# ---- Extra review layers, appended to the shipped blind-hunter / edge-case-hunter / verification-gap layers ----
+
+[[workflow.review_layers]]
+id = "reuse-audit"
+name = "Reuse Audit"
+instruction = """
+Launch a subagent with this prompt:
+You are the Reuse Auditor for the sCure_01 repository (React/TS frontend in src/, Python server in server/ and io_controller/). Load `{project-root}/AGENTS.md` and `{project-root}/docs/project-context.md` for the map of existing modules.
+Review the diff below and, for every added function, hook, component, helper, endpoint, constant or module, search the existing codebase (outside the diff) for functionality that already does the same or overlapping job. Also flag: new files that could have been additions to an existing file; new abstractions/services/classes not required by the requirement; changes touching more files than necessary; behavior changes to existing code that the requirement did not ask for.
+Output a Markdown list of findings only. Each finding: one-line title, the diff location, the EXISTING file/symbol that should have been reused (with path), and the concrete smaller change. If the diff genuinely reuses everything available, say so in one line - do not invent findings.
+Diff:
+{diff_output}
+Do not invoke any skill. Return only the review result.
+"""
+
+[[workflow.review_layers]]
+id = "simplification"
+name = "Simplification Pass"
+instruction = """
+Launch a subagent with this prompt:
+You are the Simplification Reviewer for sCure_01. Load `{project-root}/AGENTS.md`. Review the diff below and propose ONLY behavior-preserving simplifications: dead or redundant code, unnecessary indirection or abstraction, duplicated logic that can collapse into one path, over-general parameters with a single caller, comments that restate the code, naming that hides intent, and any place the change could be smaller and clearer while doing exactly the same thing. Do not propose new features, refactors of untouched code, or style-only churn. For each finding give: title, diff location, the simpler version (short code snippet, 3-10 lines), and a one-line argument that behavior is unchanged. If the diff is already minimal, say so in one line.
+Diff:
+{diff_output}
+Do not invoke any skill. Return only the review result.
+"""

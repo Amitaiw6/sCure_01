@@ -1,0 +1,107 @@
+{
+  "_comment": "CureBox component configuration. Edit THIS FILE ONLY (no source changes) to add LEDs, change fan assignments, fan speeds, default intensity, or wavelength gating. LED and fan names must match the channel names in io_controller (PCA_CHANNELS).",
+
+  "led_power": {
+    "ssr_450nm": 16,
+    "ssr_405nm": 20,
+    "routing": 17,
+    "default_mode": "405nm",
+    "min_intensity": 10,
+    "led_max_duty": 60,
+    "modes": {
+      "450nm": { "ssr_450nm": 1, "ssr_405nm": 0, "routing": 1 },
+      "405nm": { "ssr_450nm": 1, "ssr_405nm": 1, "routing": 0 }
+    },
+    "_comment": "Software-driven LED-driver SSR + wavelength-select GPIOs (OUTPUTS). GPIO16 = 450nm SSR, GPIO20 = 405nm SSR, GPIO17 = wavelength select (HIGH=450nm, LOW=405nm). GPIO17 is set BEFORE the SSRs and read back to verify before any LED may operate; on a mode change all LEDs turn off first, then GPIO17 changes. (GPIO27 is the door sensor, not here.) Below 'min_intensity' (user-facing brightness %) an LED counts as OFF: its PWM is zeroed, and once no LED remains on the SSRs (GPIO16 + GPIO20) are switched off. 'led_max_duty' is the PWM duty that equals 100% brightness (must match LED_MAX_DUTY in the dashboards); it converts min_intensity into duty for SystemController.set_led."
+  },
+
+  "door_sensor": {
+    "gpio": 27,
+    "open_level": 0,
+    "abort_after_sec": 10,
+    "_comment": "Door interlock input on GPIO27 (read via pinctrl). 'open_level' is the pin level that means the door is OPEN. Bench-confirmed 2026-07-22: GPIO27 HIGH = door CLOSED, LOW = door OPEN, hence open_level 0. When open: all LEDs + heater are forced OFF and cannot be enabled until the door closes. 'abort_after_sec' (default 10 s) is the grace period of the mid-process door watchdog: if the door STAYS open that long while any output is live, the whole process is aborted (Err 6016) and the status strip turns red; closing the door within the grace lets the process continue."
+  },
+
+  "leds": {
+    "LED_LEFT":  { "fan": "FAN_LEFT",  "fan_speed": 100, "intensity": 100, "modes": ["405nm"] },
+    "LED_RIGHT": { "fan": "FAN_RIGHT", "fan_speed": 100, "intensity": 100, "modes": ["405nm"] },
+    "LED_BACK":  { "fan": "FAN_BACK",  "fan_speed": 100, "intensity": 100, "modes": ["405nm"] },
+    "LED_DOOR":  { "fan": "FAN_DOOR",  "fan_speed": 100, "intensity": 100, "modes": ["405nm", "450nm"] }
+  },
+
+  "rgb": {
+    "gpio": 12,
+    "count": 21,
+    "order": "RGB",
+    "status": {
+      "normal": "green",
+      "fault": "red",
+      "door_open": "ff7800",
+      "busy": "blue",
+      "no_internet": "blue",
+      "internet_check_sec": 5,
+      "busy_direction": "rtl",
+      "chase_sec": 0.12,
+      "chase_tail": 5,
+      "brightness": 100,
+      "blink_sec": 0.5,
+      "status_sec": 1
+    },
+    "_comment": "RGB status LEDs (TM1903 driver on GPIO12, WS2811-compatible serial data). 'count' = number of LEDs on the strip (writing more than fitted is harmless), 'order' = color byte order (TM1903 is typically RGB; if red/green come out swapped change back to GRB). Requires: sudo pip3 install adafruit-circuitpython-neopixel. CLI: io_controller.py rgb set <color|RRGGBB> [brightness%] / rgb off. 'status' = automatic machine-status colors driven by the server (io_bridge): solid 'normal' color while everything is OK, BLINKING 'fault' color when any fault is active (highest priority), BLINKING 'door_open' color while the door is open, and while a process runs (heating/cooling/UV) the 'busy' color MOVES right-to-left as a comet ('busy_direction' rtl/ltr, one LED step every 'chase_sec' seconds, tail length 'chase_tail'). Colors are names or RRGGBB hex; 'blink_sec' is the blink half-period; change values here only - no code change needed. 'status_sec' (default 1 s - the HSI sampling-time rule: every reading is sampled at most every 1 s) is how often the machine state is (re)classified - the same watchdog also enforces the door safety: the door opening while ANY output is live aborts the process and forces every output off (heater, UV, cooling, fans, N2, BOFA, damper). 'no_internet' marks a machine that cannot reach the internet (checked in the background every 'internet_check_sec' seconds, default 5 s - TCP 443 to www.google.com / 1.1.1.1, so a router that fakes DNS answers cannot spoof \"online\"): while IDLE the strip is solid in this color, and while a PROCESS RUNS the moving comet switches from the 'busy' color to this color - process + no-internet are visible at once. Faults and door-open always take priority."
+  },
+
+  "heater": {
+    "channel": "PWM_HEATER",
+    "fan": "FAN_HEATER",
+    "fan_pwm": 100,
+    "thermistor": "TEMP_CHAMBER",
+    "min_fan_rpm": 100,
+    "temp_valid_min": -20,
+    "temp_valid_max": 120,
+    "health_check_sec": 10,
+    "_comment": "Heater safety. Before enabling, the cooling 'fan' is started at 'fan_pwm' (default 100% PWM) and must spin above 'min_fan_rpm', and 'thermistor' must read a valid temperature within [temp_valid_min, temp_valid_max]. While the heater is on, both are re-checked every 'health_check_sec' seconds; any failure turns the heater OFF immediately. Change 'fan_pwm' here only - no source change or recompile needed; each heater activation reads the latest value."
+  },
+
+  "heating": {
+    "target_temp": 60.0,
+    "target_min": 30.0,
+    "sample_sec": 0.05,
+    "kp": 0.22,
+    "ki": 0.00015,
+    "kd": 0.0,
+    "integ_max": 0.85,
+    "integ_min": 0.0,
+    "at_temp_band": 1.5,
+    "cooldown_sec": 900,
+    "cooldown_fan_pwm": 30,
+    "_comment": "Heating mode (temperature_control.py, PI(D) + delta-sigma control). Entry runs the 'heater' safety pre-flight (door closed, heater fan spin-up + RPM verified, thermistor valid) and keeps the heater fan on for the whole mode. Every 'sample_sec' (50 ms) the PI computes a 0..1 power command: control = kp*err + integ + kd*(err - prev_err), with integ += ki*err clamped to [integ_min, integ_max]; a first-order delta-sigma modulator streams that power to PWM_HEATER as per-cycle ON/OFF so the element's average ON-time equals the commanded power. |error| <= 'at_temp_band' C reports 'at temperature'. On stop the heater turns off immediately and the fan runs on at 'cooldown_fan_pwm' %% for 'cooldown_sec' s before stopping. 'target_min' is the lowest target temperature that can be entered (default 30 C): starting below it is rejected, and a mid-run setpoint below it is clamped up."
+  },
+
+  "servo": {
+    "gpio": 8,
+    "signal_inverted": true,
+    "settle_sec": 0.6,
+    "_comment": "Damper servo (MG90S) on GPIO8. The board buffers the signal through Q16 (transistor driver, J2_MOTOR_DAMPER) which INVERTS it - signal_inverted=true pre-inverts the PWM so the servo sees normal pulses. Set false only if the servo is wired directly to the GPIO pin."
+  },
+
+  "cooling": {
+    "damper_open_angle": 0,
+    "damper_closed_angle": 90,
+    "heater_fan": "FAN_HEATER",
+    "heater_fan_pwm": 100,
+    "chamber_fan": "FAN_COOLING",
+    "thermistor": "TEMP_CHAMBER",
+    "mode_pwms": { "fast": 100, "medium": 60, "slow": 30 },
+    "fast_led_fan_pwm": 100,
+    "target_temp": 25.0,
+    "sample_sec": 1.0,
+    "window_sec": 30.0,
+    "pwm_min": 0.0,
+    "pwm_max": 100.0,
+    "temp_valid_min": -20,
+    "temp_valid_max": 120,
+    "_comment": "Cooling mode (FIXED chamber-fan duty, no closed-loop rate control). Entry sequence: damper (servo) to 'damper_open_angle', then 'heater_fan' fixed at 'heater_fan_pwm' % for the whole mode, then 'chamber_fan' at a constant duty for the whole mode - the UI modes map to duties via 'mode_pwms' (fast=100, medium=60, slow=30 %). The loop samples 'thermistor' every 'sample_sec' s and estimates dT/dt over a sliding 'window_sec' s window for status/telemetry only. The mode ends automatically at 'target_temp': fans off, damper to 'damper_closed_angle'. Verify damper angles on the bench."
+  },
+
+  "_modes_note": "In 450nm mode only LEDs whose 'modes' list contains '450nm' may turn on (the Door LED). In 405nm mode every LED whose 'modes' contains '405nm' may turn on. Each LED's 'fan' starts automatically at 'fan_speed' when the LED is turned on, and stops when the LED is turned off."
+}

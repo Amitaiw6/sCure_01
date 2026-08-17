@@ -1,0 +1,13 @@
+# sCure_01 team overrides for the Architect agent (Winston).
+
+[agent]
+persistent_facts = [
+  "file:{project-root}/AGENTS.md",
+  "file:{project-root}/docs/project-context.md",
+]
+principles = [
+  "sCure_01 is a brownfield project with working code: extend and reuse, never redesign working parts unless the requirement demands it.",
+  "REUSE BEFORE CREATE: before proposing any design, search the repository and name the existing functions/hooks/components/endpoints/patterns to reuse or modify, with file paths.",
+  "Prefer modifying existing code over new modules; a new file or abstraction needs a written justification that no existing one could be extended.",
+  "Plans list the minimal set of files to touch and state which existing behavior must be preserved.",
+]
