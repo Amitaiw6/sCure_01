@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sCure Box Architecture</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --surface: #ffffff; --ink: #1c2130; --muted: #5b6375; --line: #d5d9e2;
+    --accent: #6d3fd8; --accent-soft: #efe9fc;
+    --safety: #b45309; --safety-soft: #fdf1e0;
+    --ok: #1d7a4a; --code-bg: #eef0f4;
+    --l-ui: #2563a8; --l-api: #6d3fd8; --l-bridge: #0f766e; --l-drv: #b45309; --l-hw: #5b6375;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #14171e; --surface: #1c2029; --ink: #e6e8ee; --muted: #9aa2b4; --line: #2e3442;
+    --accent: #a98bf0; --accent-soft: #2a2340; --safety: #f0a24b; --safety-soft: #3a2a15;
+    --ok: #5cc48a; --code-bg: #232833;
+    --l-ui: #7db1f0; --l-api: #a98bf0; --l-bridge: #4fd1c0; --l-drv: #f0a24b; --l-hw: #9aa2b4; } }
+  :root[data-theme="dark"] {
+    --bg: #14171e; --surface: #1c2029; --ink: #e6e8ee; --muted: #9aa2b4; --line: #2e3442;
+    --accent: #a98bf0; --accent-soft: #2a2340; --safety: #f0a24b; --safety-soft: #3a2a15;
+    --ok: #5cc48a; --code-bg: #232833;
+    --l-ui: #7db1f0; --l-api: #a98bf0; --l-bridge: #4fd1c0; --l-drv: #f0a24b; --l-hw: #9aa2b4; }
+  body { background: var(--bg); color: var(--ink); font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; line-height: 1.5; margin: 0; }
+  main { max-width: 1120px; margin: 0 auto; padding: 40px 24px 72px; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 28px; }
+  .eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  h1 { font-size: 32px; margin: 6px 0 4px; letter-spacing: -.01em; }
+  h2 { font-size: 20px; margin: 44px 0 6px; }
+  h2 + p { margin-top: 0; }
+  p, li { max-width: 78ch; }
+  .lede { color: var(--muted); font-size: 15px; }
+  code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: .92em; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+  figure { margin: 14px 0 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 18px; overflow-x: auto; }
+  figure svg { display: block; width: 100%; height: auto; min-width: 760px; }
+  figcaption { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .layers { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-top: 16px; }
+  @media (max-width: 900px) { .layers { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 560px) { .layers { grid-template-columns: 1fr; } }
+  .layer { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--lc); border-radius: 8px; padding: 14px 14px 12px; }
+  .layer h3 { margin: 0; font-size: 15px; color: var(--lc); }
+  .layer .path { font-family: Consolas, Menlo, monospace; font-size: 12px; color: var(--muted); margin: 2px 0 10px; }
+  .layer ul { list-style: none; padding: 0; margin: 0; font-size: 13px; }
+  .layer li { padding: 5px 0; border-top: 1px solid var(--line); }
+  .layer li b { font-family: Consolas, Menlo, monospace; font-weight: 600; font-size: 12.5px; }
+  .layer li span { display: block; color: var(--muted); font-size: 12px; }
+  .new { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .05em; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); vertical-align: middle; margin-left: 4px; }
+  .safe { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .05em; padding: 1px 6px; border-radius: 999px; background: var(--safety-soft); color: var(--safety); vertical-align: middle; margin-left: 4px; }
+  .flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; margin-top: 12px; }
+  .flow .step { flex: 1 1 150px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font-size: 13px; position: relative; }
+  .flow .step small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .flow .step b { font-family: Consolas, Menlo, monospace; font-size: 12px; }
+  .flow .step.s { border-color: var(--safety); }
+  .flow .arrow { align-self: center; color: var(--muted); font-size: 18px; }
+  .grid2 { display: grid; grid-template-columns: 1.1fr 1fr; gap: 20px; margin-top: 12px; }
+  @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+  pre.tree { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; font-size: 13px; line-height: 1.45; overflow-x: auto; margin: 0; }
+  .acc { color: var(--accent); font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--surface); margin-top: 12px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+  .kv { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+  @media (max-width: 760px) { .kv { grid-template-columns: 1fr 1fr; } }
+  .kv div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .kv b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .kv span { font-size: 12px; color: var(--muted); }
+</style>
+
+</head>
+<body>
+<main>
+<header>
+  <div class="eyebrow">sCure Box · branch refactor/clean-architecture · commit 8453e5c</div>
+  <h1>sCure Box Architecture</h1>
+  <p class="lede">How the machine software is put together, verified against the code. Read top to bottom: the five layers, what lives in each, the two flows that matter most, the repository, and the evidence.</p>
+  <div class="kv">
+    <div><b>5</b><span>layers, one command path</span></div>
+    <div><b>48</b><span>API routes (unchanged vs. baseline)</span></div>
+    <div><b>73</b><span>automated tests (23 vitest + 50 pytest)</span></div>
+    <div><b>0</b><span>legacy / unused files left in the tree</span></div>
+  </div>
+</header>
+
+<h2>1 · The five layers</h2>
+<p class="lede">Every command takes the same path from the touchscreen to the hardware. Nothing skips a layer, and only the last layer touches I²C/GPIO.</p>
+<figure>
+<svg viewBox="0 0 1100 250" role="img" aria-label="Five boxes left to right: Kiosk UI, Flask API, IO bridge, drivers and safety, hardware. Command arrows run left to right; a state-polling arrow runs right to left every second; the door watchdog and heater interlocks are marked on the bridge and driver layers.">
+  <defs>
+    <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+  </defs>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="13" stroke-width="1.5" fill="none">
+    <!-- boxes -->
+    <rect x="10"  y="60" width="190" height="110" rx="8" stroke="var(--l-ui)"/>
+    <rect x="235" y="60" width="190" height="110" rx="8" stroke="var(--l-api)"/>
+    <rect x="460" y="60" width="190" height="110" rx="8" stroke="var(--l-bridge)"/>
+    <rect x="685" y="60" width="190" height="110" rx="8" stroke="var(--l-drv)"/>
+    <rect x="910" y="60" width="180" height="110" rx="8" stroke="var(--l-hw)" stroke-dasharray="5 4"/>
+    <g fill="currentColor" stroke="none" text-anchor="middle">
+      <text x="105" y="88" font-size="16" font-weight="700">Kiosk UI</text>
+      <text x="105" y="108" font-family="Consolas, monospace" font-size="12">src/</text>
+      <text x="105" y="128" font-size="12" opacity=".8">React 19 · 800×480 touch</text>
+      <text x="105" y="146" font-size="12" opacity=".8">Chromium kiosk on the Pi</text>
+
+      <text x="330" y="88" font-size="16" font-weight="700">Flask API</text>
+      <text x="330" y="108" font-family="Consolas, monospace" font-size="12">server/app.py :3001</text>
+      <text x="330" y="128" font-size="12" opacity=".8">48 routes · JSON storage</text>
+      <text x="330" y="146" font-size="12" opacity=".8">serves the built UI (dist/)</text>
+
+      <text x="555" y="88" font-size="16" font-weight="700">IO Bridge</text>
+      <text x="555" y="108" font-family="Consolas, monospace" font-size="12">server/io_bridge.py</text>
+      <text x="555" y="128" font-size="12" opacity=".8">API ops → driver calls</text>
+      <text x="555" y="146" font-size="12" fill="var(--safety)">door watchdog @1 s</text>
+
+      <text x="780" y="88" font-size="16" font-weight="700">Drivers + Safety</text>
+      <text x="780" y="108" font-family="Consolas, monospace" font-size="12">io_controller/</text>
+      <text x="780" y="128" font-size="12" opacity=".8">verified I²C/GPIO writes</text>
+      <text x="780" y="146" font-size="12" fill="var(--safety)">interlocks · heater pre-flight</text>
+
+      <text x="1000" y="88" font-size="16" font-weight="700">Hardware</text>
+      <text x="1000" y="108" font-size="12" opacity=".8">Raspberry Pi + IO board</text>
+      <text x="1000" y="128" font-size="12" opacity=".8">heater · fans · UV LEDs</text>
+      <text x="1000" y="146" font-size="12" opacity=".8">door · damper · sensors</text>
+    </g>
+    <!-- command arrows -->
+    <line x1="200" y1="95" x2="235" y2="95" stroke="var(--accent)" stroke-width="2" marker-end="url(#a1)"/>
+    <line x1="425" y1="95" x2="460" y2="95" stroke="var(--accent)" stroke-width="2" marker-end="url(#a1)"/>
+    <line x1="650" y1="95" x2="685" y2="95" stroke="var(--accent)" stroke-width="2" marker-end="url(#a1)"/>
+    <line x1="875" y1="95" x2="910" y2="95" stroke="var(--accent)" stroke-width="2" marker-end="url(#a1)"/>
+    <!-- state arrows back -->
+    <line x1="235" y1="140" x2="200" y2="140" stroke="currentColor" marker-end="url(#a2)"/>
+    <line x1="460" y1="140" x2="425" y2="140" stroke="currentColor" marker-end="url(#a2)"/>
+    <line x1="685" y1="140" x2="650" y2="140" stroke="currentColor" marker-end="url(#a2)"/>
+    <line x1="910" y1="140" x2="875" y2="140" stroke="currentColor" marker-end="url(#a2)"/>
+    <!-- labels under -->
+    <g fill="currentColor" stroke="none" font-size="11.5" text-anchor="middle">
+      <text x="217" y="42" fill="var(--accent)" font-weight="600">REST</text>
+      <text x="217" y="196">state 1 Hz</text>
+      <text x="442" y="42" fill="var(--accent)" font-weight="600">Python call</text>
+      <text x="442" y="196">get_state()</text>
+      <text x="667" y="42" fill="var(--accent)" font-weight="600">SystemController</text>
+      <text x="667" y="196">snapshot()</text>
+      <text x="892" y="42" fill="var(--accent)" font-weight="600">I²C · GPIO</text>
+      <text x="892" y="196">read-back</text>
+    </g>
+    <!-- simulation note -->
+    <g fill="currentColor" stroke="none" font-size="12" opacity=".8">
+      <text x="10" y="232">Off the Pi (Windows / CI): no IO board → the API answers from a built-in simulation (<tspan font-family="Consolas, monospace">hwSource: "simulation"</tspan>); UI and routes are identical.</text>
+    </g>
+  </g>
+</svg>
+<figcaption>Violet = command path (UI → API → bridge → drivers → hardware). Grey = state read back the same way, polled by the UI once a second. Amber text = the safety mechanisms; the refactor left them byte-identical.</figcaption>
+</figure>
+
+<h2>2 · What lives in each layer</h2>
+<p class="lede">The files you will actually open. <span class="new">NEW</span> marks files created by the refactor; <span class="safe">SAFETY</span> marks code that must not change without on-device testing.</p>
+<div class="layers">
+  <section class="layer" style="--lc: var(--l-ui)">
+    <h3>Kiosk UI</h3><div class="path">src/ · 47 files</div>
+    <ul>
+      <li><b>services/hardware-api.ts</b><span>every HTTP call · the single <code>API_BASE</code></span></li>
+      <li><b>context/HardwareContext.tsx</b><span>polls <code>/api/state</code> @1 s</span></li>
+      <li><b>pages/CureProcessPage.tsx</b><span>cure state machine (250 ms tick, phases, abort)</span></li>
+      <li><b>context/MaterialContext.tsx</b><span>programs · <code>parseCsv()</code> rules</span></li>
+      <li><b>lib/limits.ts</b> <span class="new">NEW</span><span>one source of process limits</span></li>
+      <li><b>pages/</b> 7 · <b>components/</b> 15 · <b>context/</b> 6<span>Home, Cure, History, Alerts, Settings, Network, Setup</span></li>
+    </ul>
+  </section>
+  <section class="layer" style="--lc: var(--l-api)">
+    <h3>Flask API</h3><div class="path">server/ · 15 files</div>
+    <ul>
+      <li><b>app.py</b><span>48 routes + wiring (902 lines)</span></li>
+      <li><b>hardware_controller.py</b> <span class="new">NEW</span><span>IOBridge → simulation fallback</span></li>
+      <li><b>storage.py</b> <span class="new">NEW</span><span><code>server/data/*.json</code>, atomic writes, counters</span></li>
+      <li><b>cloud_sync.py</b> <span class="new">NEW</span><span>outbound sync to the cloud portal</span></li>
+      <li><b>updater.py</b> · <b>db.py</b><span>signed USB updates · optional PostgreSQL</span></li>
+      <li><b>tests/</b><span>36 pytest (simulation)</span></li>
+    </ul>
+  </section>
+  <section class="layer" style="--lc: var(--l-bridge)">
+    <h3>IO Bridge</h3><div class="path">server/io_bridge.py</div>
+    <ul>
+      <li><b>IOBridge</b><span>heat · dry · cure 405/450 · cool · N₂ · stop_all</span></li>
+      <li><b>StatusLeds</b> <span class="safe">SAFETY</span><span>RGB status thread = door watchdog: door open 10 s with outputs on → <code>door_abort()</code></span></li>
+      <li><b>get_state()</b><span>the JSON the UI polls (<code>hwSource: "io_controller"</code>)</span></li>
+    </ul>
+  </section>
+  <section class="layer" style="--lc: var(--l-drv)">
+    <h3>Drivers + Safety</h3><div class="path">io_controller/ · 4 modules</div>
+    <ul>
+      <li><b>io_controller.py</b> <span class="safe">SAFETY</span><span><code>SystemController</code>: interlocks, heater pre-flight, <code>set_and_verify</code> read-back ×3</span></li>
+      <li><b>temperature_control.py</b><span>PI + Δ-Σ heater loop @50 ms, fan run-on</span></li>
+      <li><b>cooling_mode.py</b><span>fast / medium / slow cooling</span></li>
+      <li><b>system_log.py</b><span>rotating log</span></li>
+      <li><b>components.json</b><span>all tuning — re-read live, no restart</span></li>
+      <li><b>tests/</b><span>14 pytest (pure functions)</span></li>
+    </ul>
+  </section>
+  <section class="layer" style="--lc: var(--l-hw)">
+    <h3>Hardware</h3><div class="path">Raspberry Pi CM5 + IO board</div>
+    <ul>
+      <li><b>PCA9685</b><span>PWM: fans, heater, UV LEDs</span></li>
+      <li><b>TCA6424A</b><span>valves, door magnet</span></li>
+      <li><b>ADS1115 + NTC</b><span>chamber / LED temperatures</span></li>
+      <li><b>GPIO</b><span>door sensor 27 · UV SSR 16/20 · N₂ 13</span></li>
+      <li><b>servo</b> · <b>tachs</b> · <b>RGB strip</b><span>damper · fan RPM · status light</span></li>
+    </ul>
+  </section>
+</div>
+
+<h2>3 · The two flows that matter most</h2>
+<p class="lede"><b>Start a cure</b> — the normal path.</p>
+<div class="flow">
+  <div class="step"><b>HomePage</b><small>user taps Start Cure</small></div><div class="arrow">→</div>
+  <div class="step"><b>CureProcessPage</b><small>per phase: <code>commandPhase()</code></small></div><div class="arrow">→</div>
+  <div class="step"><b>POST /api/cure/heat|cure-405|cool…</b><small>validated 30–80 °C, UV ≥ 10 %</small></div><div class="arrow">→</div>
+  <div class="step"><b>HardwareController → IOBridge</b><small>real board or simulation</small></div><div class="arrow">→</div>
+  <div class="step"><b>SystemController</b><small>pre-flight, then <code>set_and_verify</code></small></div><div class="arrow">→</div>
+  <div class="step"><b>heater / LEDs / fans</b><small>UI sees it via <code>/api/state</code> 1 s later</small></div>
+</div>
+<p class="lede" style="margin-top:22px"><b>Door opens during a cure</b> — the safety path (unchanged by the refactor).</p>
+<div class="flow">
+  <div class="step s"><b>door sensor GPIO27</b><small>read once per watchdog tick</small></div><div class="arrow">→</div>
+  <div class="step s"><b>UI: 10 s grace countdown</b><small>CureProcessPage</small></div><div class="arrow">→</div>
+  <div class="step s"><b>StatusLeds watchdog</b><small>open ≥ 10 s with outputs on</small></div><div class="arrow">→</div>
+  <div class="step s"><b>IOBridge.door_abort()</b><small>everything OFF, no fan run-on</small></div><div class="arrow">→</div>
+  <div class="step s"><b>/api/state doorAborted:true</b><small>UI alert 6016, back to Home</small></div><div class="arrow">→</div>
+  <div class="step s"><b>POST /api/door-abort/ack</b><small>clears the fault</small></div>
+</div>
+
+<h2>4 · Repository (commit 8453e5c, 502 tracked files)</h2>
+<div class="grid2">
+<pre class="tree">sCure_01/
+├─ src/               47  React kiosk UI
+│  ├─ App.tsx  main.tsx  index.css
+│  ├─ components/ (15 + ui/)  context/ (6)  pages/ (7)
+│  ├─ services/hardware-api.ts         <span class="acc">API_BASE</span>
+│  ├─ lib/ <span class="acc">limits.ts</span> compliance.ts cure-report.ts utils.ts
+│  └─ data/demo-data.ts
+├─ server/            15  Flask API
+│  ├─ app.py   <span class="acc">hardware_controller.py  storage.py  cloud_sync.py</span>
+│  ├─ io_bridge.py  updater.py  db.py  db/*.sql  desktop.py
+│  └─ tests/
+├─ io_controller/      9  drivers + safety
+│  ├─ io_controller.py  temperature_control.py
+│  ├─ cooling_mode.py  system_log.py  components.json
+│  └─ tests/
+├─ cloud/              4  cloud portal (separate deploy)
+├─ scripts/            5  pi-setup / pi-start / pi-kiosk / scure.service / win-start.bat
+├─ tools/             13  build-update.sh, gen-sbom, screenshots, error editor
+├─ public/             9  config (errors, versions, system), materials, sbom
+├─ qa-tool/            1  browser QA harness
+├─ docs/              70  SRS, CSV guide, diagrams, this page
+├─ design-handoff/        designer package (single-file UI)
+├─ keys/scure-update.pub  (private key never committed)
+├─ README.md  AGENTS.md  CLAUDE.md  VERSION (0.4.9)
+└─ package.json  vitest.config.ts  pytest.ini  tsconfig*  vite.config*</pre>
+<div>
+<p>The four <span class="acc">violet</span> files are the ones the refactor introduced. Everything else already existed and was kept, cleaned or moved.</p>
+<p>What is <b>gone</b>: 57 legacy / unused / prototype files (standalone drivers, Tk dashboards, the C++ driver, bench-analysis scripts, an unreachable material-editor page, unused components and assets). They were first parked under <code>Not_Relevant/</code> in commit <code>32997e0</code> and then deleted in <code>8453e5c</code> — recover any of them with <code>git show 32997e0:Not_Relevant/…</code>.</p>
+<p>The import graph is one-directional: <code>app.py</code> → {hardware_controller, storage, cloud_sync, db, io_bridge, updater}; <code>io_bridge</code> → <code>io_controller/</code> only; the new modules import nothing project-internal. No cycles.</p>
+<p>Deploy: on the Pi <code>scure.service</code> runs <code>server/app.py</code> and <code>pi-kiosk.sh</code> opens Chromium; on Windows <code>win-start.bat</code> runs the same API in simulation inside a desktop window.</p>
+</div>
+</div>
+
+<h2>5 · How this page was verified</h2>
+<table>
+<thead><tr><th>Claim</th><th>Command / evidence</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>Folders and file counts</td><td><code>git ls-tree -r --name-only HEAD -- &lt;dir&gt; | wc -l</code></td><td>src 47 · server 15 · io_controller 9 · cloud 4 · scripts 5 · tools 13 · public 9 · docs 70 · qa-tool 1 · total 502 <span class="pill">✓</span></td></tr>
+<tr><td>server/ = 8 modules + db/*.sql + tests; io_controller/ = 4 modules + components.json + tests</td><td><code>ls server/*.py io_controller/*.py</code></td><td>as listed <span class="pill">✓</span></td></tr>
+<tr><td>Import graph as drawn, no cycles</td><td>grep of <code>import</code>/<code>from</code> lines in every server/ and io_controller/ file</td><td>app → 6 modules; io_bridge → io_controller only; new modules import nothing internal <span class="pill">✓</span></td></tr>
+<tr><td>48 API routes</td><td><code>grep -c "@app.route" server/app.py</code></td><td>48, identical to baseline <span class="pill">✓</span></td></tr>
+<tr><td>6 UI routes, no /material-editor</td><td>grep <code>path="…"</code> in <code>src/App.tsx</code></td><td>/, /cure-process, /settings, /network, /alerts, /cure-history <span class="pill">✓</span></td></tr>
+<tr><td>One <code>API_BASE</code>; limits from <code>limits.ts</code></td><td><code>grep -rl API_BASE src</code>; <code>grep -rl "@/lib/limits" src</code></td><td>8 users / 1 definition; 3 consumers <span class="pill">✓</span></td></tr>
+<tr><td>UI polls state every 1 s</td><td><code>HardwareContext.tsx:200 setInterval(checkStatus, 1000)</code></td><td><span class="pill">✓</span></td></tr>
+<tr><td>hwSource simulation / io_controller</td><td><code>hardware_controller.py:98</code>, <code>io_bridge.py:426</code></td><td><span class="pill">✓</span></td></tr>
+<tr><td>Boot path</td><td><code>scripts/scure.service:12 ExecStart=…/server/app.py</code></td><td><span class="pill">✓</span></td></tr>
+<tr><td>Legacy code removed, nothing references it</td><td><code>grep -rn Not_Relevant</code> over active files; <code>git ls-files | grep Not_Relevant</code></td><td>0 files, only history pointers in docs <span class="pill">✓</span></td></tr>
+<tr><td>Behavior unchanged</td><td>vitest 23 + pytest 50 green; 55-step API scenario diffed against baseline <code>main</code></td><td>0 diffs, same route map <span class="pill">✓</span></td></tr>
+<tr><td>Safety code untouched</td><td><code>git diff main -- io_controller/</code> = 1 comment; <code>io_bridge.py</code> = door read once + dead key</td><td>timings / thresholds / abort logic identical <span class="pill">✓</span></td></tr>
+</tbody>
+</table>
+<p class="lede" style="margin-top:14px">Not verified here: behavior on the real machine (hwSource <code>io_controller</code>, door / abort, SIGTERM shutdown). That needs a run on the Pi — see <code>_bmad-output/planning-artifacts/deferred-findings.md</code>.</p>
+</main>
+
+</body>
+</html>

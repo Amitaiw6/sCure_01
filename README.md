@@ -16,7 +16,7 @@ Raspberry Pi with an 800×480 touch kiosk. Requirements: [docs/sCure_SRS.html](d
 | `tools/` | Dev tooling: update-package builder, SBOM, screenshot/diagram helpers, error-registry editor. |
 | `public/config/` | `errors.json` (error registry), `versions.json` (release notes), `system.json`. |
 | `qa-tool/` | Browser QA harness (~200 checks) run against a live server. |
-| `docs/`, `design-handoff/` | SRS, CSV import guide, diagrams; designer package (single-file UI build). |
+| `docs/`, `design-handoff/` | SRS, CSV import guide, diagrams, `architecture.html` (verified structure overview); designer package (single-file UI build). |
 
 ## Running
 
