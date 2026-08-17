@@ -15,6 +15,11 @@
 #
 # The .scu file is a tar.gz with a manifest + signature.
 # Copy it to a USB stick root folder to deploy.
+#
+# NOTE (owner decision pending): the install paths used by install.sh below
+# (/opt/scure, services scure-api / scure-ui) predate scripts/scure.service,
+# which runs server/app.py from APP_DIR as one `scure` service. Align the
+# installer with the deployed layout before first field use.
 
 set -e
 
@@ -68,15 +73,17 @@ PACKAGE_NAME="scure-update-${VERSION}"
 
 mkdir -p "$STAGING/$PACKAGE_NAME/frontend"
 mkdir -p "$STAGING/$PACKAGE_NAME/server"
+mkdir -p "$STAGING/$PACKAGE_NAME/io_controller"
 mkdir -p "$STAGING/$PACKAGE_NAME/materials/presets"
 
 # Frontend build
 cp -r dist/* "$STAGING/$PACKAGE_NAME/frontend/"
 
-# Server files
-cp server/app.py "$STAGING/$PACKAGE_NAME/server/"
+# Server files (all modules: app.py, hardware_controller.py, storage.py,
+# cloud_sync.py, io_bridge.py, updater.py, db.py) + IO-board driver
+cp server/*.py "$STAGING/$PACKAGE_NAME/server/"
 cp server/requirements.txt "$STAGING/$PACKAGE_NAME/server/"
-[ -d server/hardware ] && cp -r server/hardware "$STAGING/$PACKAGE_NAME/server/"
+cp io_controller/*.py io_controller/components.json "$STAGING/$PACKAGE_NAME/io_controller/"
 
 # Preset materials
 cp -r public/materials/presets/* "$STAGING/$PACKAGE_NAME/materials/presets/"
@@ -93,6 +100,7 @@ cat > "$STAGING/$PACKAGE_NAME/manifest.json" << EOF
   "files": {
     "frontend": "frontend/",
     "server": "server/",
+    "io_controller": "io_controller/",
     "presets": "materials/presets/"
   },
   "install": {
@@ -129,20 +137,15 @@ case "$1" in
     rm -rf "$INSTALL_DIR/frontend"
     cp -r "$SCRIPT_DIR/frontend" "$INSTALL_DIR/frontend"
 
-    # Update server
-    cp "$SCRIPT_DIR/server/app.py" "$INSTALL_DIR/server/app.py"
+    # Update server modules + IO-board driver (server/data/ is never touched)
+    mkdir -p "$INSTALL_DIR/server" "$INSTALL_DIR/io_controller"
+    cp "$SCRIPT_DIR/server/"*.py "$INSTALL_DIR/server/"
     cp "$SCRIPT_DIR/server/requirements.txt" "$INSTALL_DIR/server/requirements.txt"
+    cp "$SCRIPT_DIR/io_controller/"*.py "$SCRIPT_DIR/io_controller/components.json" "$INSTALL_DIR/io_controller/"
     pip3 install -r "$INSTALL_DIR/server/requirements.txt" --quiet
 
     # Update presets (don't touch user materials)
     cp -r "$SCRIPT_DIR/materials/presets/"* "$INSTALL_DIR/materials/presets/"
-
-    # Rebuild C++ driver if source updated
-    if [ -d "$SCRIPT_DIR/server/hardware" ]; then
-      cp -r "$SCRIPT_DIR/server/hardware" "$INSTALL_DIR/server/hardware"
-      cd "$INSTALL_DIR/server/hardware"
-      [ -f build.sh ] && chmod +x build.sh && ./build.sh && cp hw_driver*.so ../
-    fi
 
     # Restart services
     systemctl start scure-api

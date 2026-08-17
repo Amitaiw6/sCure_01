@@ -7,29 +7,29 @@ Kiosk software for the sCure Box (UV post-curing enclosure for 3D prints) on a R
 - REUSE BEFORE CREATE: search the repo and read `docs/project-context.md` before designing; modify existing functions/components/endpoints instead of adding parallel ones. A new file, class, service or abstraction needs a written reason why no existing one could be extended.
 - Minimal, localized change: touch the fewest files, no unrelated refactoring, no redesign of working parts unless the requirement demands it. Preserve existing behavior unless the requirement explicitly changes it.
 - Never commit `keys/scure-update.key`, `.mcp.json` tokens, `server/data/`, or `cloud/portal_config.json`; they hold secrets or device data.
-- Do not extend the legacy `io_controller/{pca9685,tca6424a,servo,fan_control,gpio_*,temp_monitor}.py`, the Tk dashboards, or `server/hardware/*.cpp`; the live driver is `io_controller/io_controller.py` (via `server/io_bridge.py`).
+- Never import from or extend `Not_Relevant/` (parked legacy drivers, dashboards, C++ driver, prototypes, bench tools); the live driver is `io_controller/io_controller.py` (via `server/io_bridge.py`).
 - Process modules own no hardware: act only through `SystemController` verified functions (`set_and_verify`), never write PCA/GPIO directly from server code.
 - Add error codes to `public/config/errors.json`; never invent inline codes. User-visible errors are raised via the alert registry (`triggerAlert` / `scure-alert` event).
 
 ## Where things are
-- All frontend HTTP calls: `src/services/hardware-api.ts`; live state: `src/context/HardwareContext.tsx`; cure state machine: `src/pages/CureProcessPage.tsx`; CSV/program rules: `parseCsv()` in `src/context/MaterialContext.tsx`.
-- All API routes: `server/app.py`; API→hardware mapping: `server/io_bridge.py`; safety/interlocks: `SystemController` in `io_controller/io_controller.py`; tuning: `io_controller/components.json`.
+- All frontend HTTP calls + `API_BASE`: `src/services/hardware-api.ts`; process limits: `src/lib/limits.ts`; live state: `src/context/HardwareContext.tsx`; cure state machine: `src/pages/CureProcessPage.tsx`; CSV/program rules: `parseCsv()` in `src/context/MaterialContext.tsx`.
+- All API routes: `server/app.py`; hardware facade/simulation: `server/hardware_controller.py`; JSON persistence: `server/storage.py`; cloud agent: `server/cloud_sync.py`; API→hardware mapping: `server/io_bridge.py`; safety/interlocks: `SystemController` in `io_controller/io_controller.py`; tuning: `io_controller/components.json`.
 - Team BMAD overrides: `_bmad/custom/*.toml` (workflow rules, review layers).
 
 ## Running and verifying
-- There is no unit-test suite. Gates are `npm run build` (includes `tsc -b`) and `npm run lint` for `src/`; `python -m py_compile <changed .py>` plus running `python server/app.py` off-Pi (simulation mode) and/or `qa-tool/index.html` for backend changes. State in every plan which of these you ran.
+- Gates: `npm run build` (includes `tsc -b`), `npm run lint`, `npm test` (vitest, pure logic) for `src/`; `python -m pytest` (server/tests, io_controller/tests, simulation) and `python -m py_compile server/*.py io_controller/*.py` for Python; `qa-tool/index.html` against a running server for end-to-end. State in every plan which of these you ran.
 - Off the Pi everything runs in simulation: `hardware-api.ts` returns `{ok:true, 'Simulated in dev mode'}` when the API is unreachable, and `server/app.py` simulates hardware when no IO board is present. Do not mistake simulated success for verified hardware behavior.
 - BMAD skills need `uv` on PATH and UTF-8 stdout (`PYTHONUTF8=1`, set in `.claude/settings.json`).
 
 ## Conventions that differ from defaults
 - No type hints in Python; contracts live in docstrings. Hardware ops return `(ok, reason)`; HTTP returns `{ok, code, message}`. JSON keys camelCase, Python/SQL snake_case.
 - Frontend: fixed 800x480 canvas, dark-only, English-only (`translate="no"`), touch targets 44-48 px, `touch-manipulation` on interactive elements; network calls wrapped in `try/catch` + `AbortSignal.timeout` and degrade instead of throwing.
-- Files must persist via the atomic write idiom (`tmp` → `flush` → `fsync` → `os.replace`) already used in `server/app.py`.
+- Files must persist via the atomic write idiom (`tmp` → `flush` → `fsync` → `os.replace`) already used in `server/storage.py`.
 - `*.sh` and `*.service` are LF-only (`.gitattributes`); they run on the Pi.
 
 ## Known pitfalls
-- The whole project is currently uncommitted on top of an unrelated 2-commit history; make a real baseline commit before feature work so diff-based review works.
-- `StepCard.tsx` duplicates the step-type unions from `MaterialContext`; three contexts hardcode `http://localhost:3001` instead of `VITE_HW_API_URL`; `HEAT_MIN_TEMP` is defined twice. Reuse the `MaterialContext`/`hardware-api.ts` versions; consolidate only when a task touches them.
+- Process limits and step types have one source (`src/lib/limits.ts`, `ProcessType` in `MaterialContext`) and one `API_BASE`; do not re-declare them locally.
+- Server validation limits (`server/app.py`: heat 30-80, cool 20-80, UV >= 10) intentionally differ from UI product limits (`limits.ts`: cool 30-75); do not "align" them.
 <!-- /bmad:context -->
 
 ## Development workflow (BMAD, brownfield)

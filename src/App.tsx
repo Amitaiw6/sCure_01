@@ -4,7 +4,6 @@ import TopBar from '@/components/TopBar'
 import HomePage from '@/pages/HomePage'
 import CureProcessPage from '@/pages/CureProcessPage'
 import SettingsPage from '@/pages/SettingsPage'
-import MaterialEditorPage from '@/pages/MaterialEditorPage'
 import NetworkPage from '@/pages/NetworkPage'
 import AlertsPage from '@/pages/AlertsPage'
 import CureHistoryPage from '@/pages/CureHistoryPage'
@@ -87,7 +86,6 @@ function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/cure-process" element={<CureProcessPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/material-editor" element={<MaterialEditorPage />} />
           <Route path="/network" element={<NetworkPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/cure-history" element={<CureHistoryPage />} />

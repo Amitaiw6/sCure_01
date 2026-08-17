@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
+import { API_BASE } from '@/services/hardware-api'
 
 export interface HardwareFaults {
   heater: string | null
@@ -127,8 +128,6 @@ export function HardwareProvider({ children }: { children: ReactNode }) {
   // Poll network + API status (real chamber temp, door, etc.) every 2 seconds
   const alertRef = useRef({ wasConnected: false, heaterFault: null as string | null, coolingFault: null as string | null })
   useEffect(() => {
-    const API_BASE = import.meta.env.VITE_HW_API_URL || 'http://localhost:3001/api'
-
     // Surface hardware problems on the Alerts screen via the central registry
     // codes (AlertsContext listens for this event).
     const raiseAlert = (code: number) =>

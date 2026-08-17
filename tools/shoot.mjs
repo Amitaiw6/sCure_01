@@ -94,7 +94,6 @@ await shot('/settings', 'settings', { waitText: 'REBOOT', extraWait: 800 })
 await shot('/alerts', 'alerts', { extraWait: 900 })
 await shot('/cure-history', 'cure-history', { extraWait: 900 })
 await shot('/network', 'network', { extraWait: 900 })
-await shot('/material-editor', 'material-editor', { extraWait: 800 })
 
 // 8. Cure process — auto-starts with default fallback phases; capture mid-ramp
 await shot('/cure-process', 'cure', { extraWait: 3500 })

@@ -1,13 +1,16 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
+import { API_BASE } from '@/services/hardware-api'
+import { COOL_MIN_TEMP, COOL_MAX_TEMP, NO_HEAT_FLOOR, HEAT_MAX_TEMP, UV_MIN, UV_MAX, TIME_MAX_MIN, TIME_MAX_MIN_BLEACH } from '@/lib/limits'
 
 export type TimerMode = 'on-ramp' | 'on-target'
 export type UvStartMode = 'at-start' | 'at-target'
 export type CoolingMode = 'fast' | 'medium' | 'slow'
+export type ProcessType = 'Heating' | 'Drying' | 'Cure' | 'Cooling' | 'Bleacher' | 'Nitrogen'
 
 export interface CureStep {
   step: number
-  process: 'Heating' | 'Drying' | 'Cure' | 'Cooling' | 'Bleacher' | 'Nitrogen'
+  process: ProcessType
   temperature: number | null
   intensity: number | null
   time: number
@@ -41,8 +44,6 @@ interface MaterialContextType {
   exportMaterialCsv: (id: string) => void
   isLoading: boolean
 }
-
-const API_BASE = 'http://localhost:3001'
 
 // CSV generation — only used for user export/download
 export function stepsToCsv(steps: CureStep[]): string {
@@ -96,7 +97,7 @@ export function parseCsv(csvContent: string): CsvParseResult {
     }
 
     const process = cols[1]
-    if (!VALID_PROCESSES.includes(process as any)) {
+    if (!VALID_PROCESSES.includes(process as ProcessType)) {
       errors.push(`Row ${i}: Invalid process "${process}" (must be Heating, Drying, Cure, Cooling, Bleacher, or Nitrogen)`)
       continue
     }
@@ -107,7 +108,7 @@ export function parseCsv(csvContent: string): CsvParseResult {
     let time = 0
     if (proc !== 'Cooling' && proc !== 'Nitrogen') {
       // Bleaching may run up to 12 hours (720 min); other processes cap at 120 min.
-      const maxTime = proc === 'Bleacher' ? 720 : 120
+      const maxTime = proc === 'Bleacher' ? TIME_MAX_MIN_BLEACH : TIME_MAX_MIN
       time = parseInt(cols[3])
       if (isNaN(time) || time < 1 || time > maxTime) {
         errors.push(`Row ${i}: Invalid time "${cols[3]}" (must be 1-${maxTime})`)
@@ -137,7 +138,7 @@ export function parseCsv(csvContent: string): CsvParseResult {
     // fan only / a plain timed hold.
     const temp = cols[2] ? Number(cols[2]) : null
     if (temp !== null) {
-      const [tMin, tMax] = proc === 'Cooling' ? [30, 75] : [15, 80]
+      const [tMin, tMax] = proc === 'Cooling' ? [COOL_MIN_TEMP, COOL_MAX_TEMP] : [NO_HEAT_FLOOR, HEAT_MAX_TEMP]
       if (isNaN(temp) || temp < tMin || temp > tMax) {
         errors.push(`Row ${i}: Invalid temperature "${cols[2]}" (must be ${tMin}-${tMax} for ${proc})`)
         continue
@@ -166,8 +167,8 @@ export function parseCsv(csvContent: string): CsvParseResult {
       // stay dark, so anything under 10 is rejected here and by the backend.
       const uvInt = cols[5] ? Number(cols[5]) : null
       if (uvInt !== null) {
-        if (isNaN(uvInt) || uvInt < 10 || uvInt > 100) {
-          errors.push(`Row ${i}: Invalid UV intensity "${cols[5]}" (must be 10-100)`)
+        if (isNaN(uvInt) || uvInt < UV_MIN || uvInt > UV_MAX) {
+          errors.push(`Row ${i}: Invalid UV intensity "${cols[5]}" (must be ${UV_MIN}-${UV_MAX})`)
           continue
         }
         step.uvIntensity = uvInt
@@ -285,19 +286,23 @@ function downloadCsvFile(name: string, csvContent: string) {
 
 // Material programs are managed in PostgreSQL and read via the backend API.
 // When the backend is unreachable (dev / offline), fall back to a bundled demo set.
+// User programs: demo ONLY in dev builds. In production an empty list is used, so
+// a UI that started before the API was up cannot POST demo programs over the real
+// server/data/user_materials.json on the next edit. Presets stay unconditional
+// (see loadPresets: on the JSON-file deployment the API has no preset list).
 import { DEMO_PRESETS, DEMO_USER_PROGRAMS } from '@/data/demo-data'
 
 async function loadUserMaterials(): Promise<Material[]> {
   try {
-    const res = await fetch(`${API_BASE}/api/materials/user`)
+    const res = await fetch(`${API_BASE}/materials/user`)
     if (res.ok) return await res.json()
   } catch { /* backend not available */ }
-  return DEMO_USER_PROGRAMS
+  return import.meta.env.DEV ? DEMO_USER_PROGRAMS : []
 }
 
 async function saveUserMaterials(materials: Material[]) {
   try {
-    await fetch(`${API_BASE}/api/materials/user`, {
+    await fetch(`${API_BASE}/materials/user`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(materials),
@@ -307,7 +312,7 @@ async function saveUserMaterials(materials: Material[]) {
 
 async function loadPresets(): Promise<Material[]> {
   try {
-    const res = await fetch(`${API_BASE}/api/materials/presets`)
+    const res = await fetch(`${API_BASE}/materials/presets`)
     if (res.ok) return await res.json()
   } catch { /* backend not available */ }
   return DEMO_PRESETS

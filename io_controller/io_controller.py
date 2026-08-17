@@ -125,8 +125,8 @@ NTC_R0, NTC_BETA, NTC_T0 = 10000.0, 3934.0, 298.15
 NTC_R_SERIES, NTC_VREF, NTC_DIVIDER = 10000.0, 3.3, "pullup"
 
 # TEMP_CHAMBER calibration against a Pico TC-08 inside the chamber
-# (2026-08-04, scripts/calibrate_scure_temp.py, 724 paired samples over a
-# 31->80 C heat-up, 80 C hold and fan cool-down).
+# (2026-08-04, Not_Relevant/development-tools/bench-analysis/calibrate_scure_temp.py,
+# 724 paired samples over a 31->80 C heat-up, 80 C hold and fan cool-down).
 #   static part (exact at steady state, raw 31.5-76.6 C):
 #       actual = GAIN * raw + OFFSET
 #   rate compensation on top of it (rate = raw-reading slope, C/min over the

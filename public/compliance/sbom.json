@@ -2,11 +2,11 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
   "metadata": {
-    "timestamp": "2026-06-22T09:57:56.229Z",
+    "timestamp": "2026-08-17T20:31:35.181Z",
     "component": {
       "type": "application",
-      "name": "scure-a-temp",
-      "version": "0.0.0"
+      "name": "scure-box",
+      "version": "0.4.9"
     },
     "standards": [
       "EU CRA (Regulation (EU) 2024/2847)",
@@ -115,6 +115,13 @@
     },
     {
       "type": "library",
+      "name": "puppeteer-core",
+      "version": "25.2.1",
+      "scope": "optional",
+      "purl": "pkg:npm/puppeteer-core@25.2.1"
+    },
+    {
+      "type": "library",
       "name": "qrcode.react",
       "version": "4.2.0",
       "scope": "required",
@@ -147,13 +154,6 @@
       "version": "7.13.2",
       "scope": "required",
       "purl": "pkg:npm/react-router-dom@7.13.2"
-    },
-    {
-      "type": "library",
-      "name": "recharts",
-      "version": "3.8.1",
-      "scope": "required",
-      "purl": "pkg:npm/recharts@3.8.1"
     },
     {
       "type": "library",
@@ -203,6 +203,20 @@
       "version": "8.0.1",
       "scope": "optional",
       "purl": "pkg:npm/vite@8.0.1"
+    },
+    {
+      "type": "library",
+      "name": "vite-plugin-singlefile",
+      "version": "2.3.3",
+      "scope": "optional",
+      "purl": "pkg:npm/vite-plugin-singlefile@2.3.3"
+    },
+    {
+      "type": "library",
+      "name": "vitest",
+      "version": "4.1.10",
+      "scope": "optional",
+      "purl": "pkg:npm/vitest@4.1.10"
     }
   ]
 }

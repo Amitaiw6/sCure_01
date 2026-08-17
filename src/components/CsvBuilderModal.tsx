@@ -18,15 +18,14 @@ import {
 import OnScreenKeyboard from '@/components/OnScreenKeyboard'
 import { useMaterials } from '@/context/MaterialContext'
 import { exportCsvToUsb } from '@/services/hardware-api'
-import type { CureStep, Material } from '@/context/MaterialContext'
+import type { CureStep, Material, ProcessType } from '@/context/MaterialContext'
+import { HEAT_MIN_TEMP, NO_HEAT_MIN_TEMP, HEAT_MAX_TEMP, COOL_MIN_TEMP, COOL_MAX_TEMP, UV_MIN, UV_MAX, TIME_MAX_MIN, TIME_MAX_MIN_BLEACH, isUvProcess, isHeatType } from '@/lib/limits'
 
 interface CsvBuilderModalProps {
   isOpen: boolean
   onClose: () => void
   editMaterial?: Material | null
 }
-
-type ProcessType = 'Heating' | 'Drying' | 'Cure' | 'Cooling' | 'Bleacher' | 'Nitrogen'
 
 const emptyStep = (stepNum: number): CureStep => ({
   step: stepNum,
@@ -49,6 +48,7 @@ export default function CsvBuilderModal({ isOpen, onClose, editMaterial }: CsvBu
 
   // Load data when editing
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset form state when the modal target changes
     setCsvMsg(null)
     if (editMaterial) {
       setName(editMaterial.name)
@@ -122,13 +122,8 @@ export default function CsvBuilderModal({ isOpen, onClose, editMaterial }: CsvBu
   // Cure/Bleaching MAY go below the floor (15-29°C): the step then runs in
   // "no heating" mode — UV only at ambient — and neither violates nor
   // advances the rising-temperature sequence.
-  const HEAT_MIN_TEMP = 30
-  const NO_HEAT_MIN_TEMP = 25   // single OFF notch below the floor (step=5)
-  // Lowest coolable target: the chamber cannot cool below ambient (~30 °C on
-  // this machine), so a lower setpoint would never be reached and would stall.
-  const COOL_MIN_TEMP = 30
-  const isUvProcess = (p: ProcessType) => p === 'Cure' || p === 'Bleacher'
-  const isHeatType = (p: ProcessType) => p !== 'Cooling' && p !== 'Nitrogen'
+  // (HEAT_MIN_TEMP / NO_HEAT_MIN_TEMP / COOL_MIN_TEMP and the isUvProcess /
+  // isHeatType helpers come from @/lib/limits.)
   const isNoHeatStep = (s: { process: ProcessType; temperature: number | null }) =>
     isHeatType(s.process) && s.temperature != null && s.temperature < HEAT_MIN_TEMP
   const getMinTemp = (index: number): number => {
@@ -149,7 +144,7 @@ export default function CsvBuilderModal({ isOpen, onClose, editMaterial }: CsvBu
       if (isNoHeatStep(steps[i])) continue
       if (steps[i].temperature != null) return steps[i].temperature! - 5
     }
-    return 75
+    return COOL_MAX_TEMP
   }
 
   // When a step's temperature changes, keep the following steps consistent:
@@ -443,7 +438,7 @@ export default function CsvBuilderModal({ isOpen, onClose, editMaterial }: CsvBu
                       <TouchNumber
                         value={step.temperature}
                         onChange={v => updateStepTemp(i, v ?? getMinTemp(i))}
-                        min={getMinTemp(i)} max={80} step={5} suffix="°C"
+                        min={getMinTemp(i)} max={HEAT_MAX_TEMP} step={5} suffix="°C"
                         format={isHeatType(step.process)
                           ? v => (v < HEAT_MIN_TEMP ? 'OFF' : `${v}°C`)
                           : undefined}
@@ -461,25 +456,13 @@ export default function CsvBuilderModal({ isOpen, onClose, editMaterial }: CsvBu
                     </div>
                   )}
 
-                  {false && (step.process === 'Cure' || step.process === 'Bleacher') && (
-                    <div className="flex items-center justify-between gap-3">
-                      <label className="text-foreground text-sm">Intensity</label>
-                      <TouchNumber
-                        value={step.intensity}
-                        onChange={v => updateStep(i, 'intensity', v)}
-                        min={0} max={100} step={5} suffix="%"
-                        className="w-[140px]"
-                      />
-                    </div>
-                  )}
-
                   {step.process !== 'Cooling' && step.process !== 'Nitrogen' && (
                     <div className="flex items-center justify-between gap-3">
                       <label className="text-foreground text-sm">Time</label>
                       <TouchNumber
                         value={step.time}
                         onChange={v => updateStep(i, 'time', v ?? 1)}
-                        min={1} max={step.process === 'Bleacher' ? 720 : 120} step={1} suffix=" min"
+                        min={1} max={step.process === 'Bleacher' ? TIME_MAX_MIN_BLEACH : TIME_MAX_MIN} step={1} suffix=" min"
                         className="w-[140px]"
                       />
                     </div>
@@ -506,7 +489,7 @@ export default function CsvBuilderModal({ isOpen, onClose, editMaterial }: CsvBu
                         <TouchNumber
                           value={step.uvIntensity ?? 30}
                           onChange={v => updateStep(i, 'uvIntensity', v)}
-                          min={10} max={100} step={5} suffix="%"
+                          min={UV_MIN} max={UV_MAX} step={5} suffix="%"
                           className="w-[140px]"
                         />
                       </div>

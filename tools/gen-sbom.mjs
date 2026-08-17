@@ -4,6 +4,9 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+// VERSION is the single source of truth for the machine software version
+// (read by GET /api/system/version); package.json only names the package.
+const VERSION = readFileSync('VERSION', 'utf8').trim()
 const OUT_DIR = 'public/compliance'
 const OUT = `${OUT_DIR}/sbom.json`
 
@@ -26,7 +29,7 @@ const sbom = {
   specVersion: '1.5',
   metadata: {
     timestamp: new Date().toISOString(),
-    component: { type: 'application', name: pkg.name, version: pkg.version },
+    component: { type: 'application', name: pkg.name, version: VERSION },
     standards: ['EU CRA (Regulation (EU) 2024/2847)', 'EN 18031', 'EN 40000'],
   },
   components,

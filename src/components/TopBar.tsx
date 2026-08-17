@@ -28,6 +28,7 @@ export default function TopBar() {
   // Track if heating has been on for more than 10 seconds
   useEffect(() => {
     if (!hw.isHeating || !hw.heatingStartTime) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from polled hardware state + timer
       setHeatingLong(false)
       return
     }

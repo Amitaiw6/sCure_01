@@ -11,7 +11,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 
-const API_BASE = import.meta.env.VITE_HW_API_URL || 'http://localhost:3001/api'
+import { API_BASE } from '@/services/hardware-api'
 
 type Tab = 'status' | 'diagnostics'
 

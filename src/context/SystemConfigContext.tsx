@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { API_BASE } from '@/services/hardware-api'
 
 export interface SystemConfig {
   serialNumber: string
@@ -72,7 +73,6 @@ export function SystemConfigProvider({ children }: { children: ReactNode }) {
       // Live values from the machine override the static file: the real app
       // version (VERSION file via /api/system/version) and the real boot time.
       try {
-        const API_BASE = import.meta.env.VITE_HW_API_URL || 'http://localhost:3001/api'
         const res = await fetch(`${API_BASE}/system/version`, { signal: AbortSignal.timeout(3000) })
         if (res.ok) {
           const v = await res.json()

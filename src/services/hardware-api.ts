@@ -2,7 +2,7 @@
  * Hardware API service
  *
  * Architecture:
- *   React UI → Python Flask API (port 3001) → C++ driver (pybind11)
+ *   React UI → Flask API (port 3001) → io_bridge → io_controller
  *
  * In production on RPi CM5, Python server runs on same device.
  * In development, calls are simulated.
@@ -10,7 +10,7 @@
 
 import { sha256Hex } from '@/lib/compliance'
 
-const API_BASE = import.meta.env.VITE_HW_API_URL || 'http://localhost:3001/api'
+export const API_BASE = import.meta.env.VITE_HW_API_URL || 'http://localhost:3001/api'
 const IS_DEV = import.meta.env.DEV
 
 // Never sent to a live server from a dev machine, even if one is reachable

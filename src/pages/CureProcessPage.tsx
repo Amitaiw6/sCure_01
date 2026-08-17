@@ -18,6 +18,7 @@ import {
   coolToTargetTemperature, stopCureOutputs, doorOpen, setNitrogenValve,
   reportPhaseTiming, setUvOutput, setFanSpeed,
 } from '@/services/hardware-api'
+import { HEAT_MIN_TEMP } from '@/lib/limits'
 
 const phaseColorMap: Record<string, string> = {
   Heating: 'text-orange-400',
@@ -52,7 +53,7 @@ const COOL_DONE_BAND = 0.5  // °C band around the target that counts as "reache
 // temperature is set BELOW this runs in "no heating" (OFF) mode — no heater
 // loop and no ramp. Cure/Bleaching light the UV at ambient, Drying runs its
 // intake fan only, Heating simply holds for the step time.
-const HEAT_MIN_TEMP = 30
+// (HEAT_MIN_TEMP is imported from @/lib/limits.)
 const DRY_FAN_PWM = 30   // drying intake-fan duty, same as the heated drying flow
 const isNoHeat = (p: { type: PhaseType; temp: number | null }) =>
   p.type !== 'cooling' && p.type !== 'nitrogen' && p.temp != null && p.temp < HEAT_MIN_TEMP
@@ -131,7 +132,7 @@ export default function CureProcessPage() {
         name: s.process,
         type: s.process.toLowerCase() as PhaseType,
         temp: s.temperature,
-        // StepModal stores the user's UV value in uvIntensity; legacy rows may
+        // The program editor (CsvBuilderModal) stores the user's UV value in uvIntensity; legacy rows may
         // still carry it in intensity. The hardware expects 5-100%.
         intensity: s.uvIntensity ?? s.intensity,
         time: s.time,

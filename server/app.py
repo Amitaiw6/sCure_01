@@ -4,7 +4,12 @@ sCure Hardware API Server (Python)
 Runs on Raspberry Pi CM5.
 
 Architecture:
-    React UI (frontend) → Python Flask API → C++ hardware driver
+    React UI (frontend) → Python Flask API → io_bridge → io_controller
+    (off-Pi / no IO board: built-in simulation, see hardware_controller.py)
+
+Modules: hardware_controller.py (HardwareController), storage.py (JSON
+file stores, ComponentCounters), cloud_sync.py (CloudSync). This file owns
+the routes, the wiring/construction order and the atexit registrations.
 
 Install:
     pip install flask flask-cors
@@ -12,18 +17,23 @@ Install:
 Run:
     sudo python3 app.py
     (sudo needed for GPIO/reboot/shutdown)
-
-The C++ driver is compiled as a shared library or called via subprocess.
 """
 
 import os
 import sys
-import json
+import atexit
+import signal
+import logging
 import subprocess
-import threading
-import time
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+
+from hardware_controller import HardwareController
+from storage import (DATA_DIR, PRINT_HISTORY_FILE, PHASE_TIMINGS_FILE,
+                     history_lock, load_json_file, save_json_file,
+                     load_user_materials, save_user_materials,
+                     CureFileStore, ComponentCounters)
+from cloud_sync import CloudSync
 
 # PostgreSQL data layer (print data, released materials, cure reports).
 # Safe to import without a DB / driver — falls back to JSON files (see db.available()).
@@ -33,16 +43,14 @@ except Exception as _e:  # pragma: no cover
     db = None
     print(f"[DB] data layer unavailable: {_e}")
 
-# Try to import the C++ hardware driver
-try:
-    from hardware import hw_driver
-    HW_AVAILABLE = True
-except ImportError:
-    HW_AVAILABLE = False
-    print("[WARN] C++ hardware driver not found, running in simulation mode")
-
 app = Flask(__name__)
 CORS(app)
+
+# Werkzeug logs every request at INFO; the UI polls /api/state at 1 Hz, so that
+# is ~86k lines/day into journald (Pi) / scure-desktop.log (desktop.py, which
+# imports this module). Keep only warnings unless SCURE_ACCESS_LOG=1.
+if not os.environ.get('SCURE_ACCESS_LOG'):
+    logging.getLogger('werkzeug').setLevel(logging.WARNING)
 
 
 def run(cmd, timeout=15):
@@ -71,408 +79,22 @@ except Exception as _e:  # pragma: no cover
     print(f"[API] IO bridge failed to load: {_e} - simulation mode")
 
 if io_bridge is not None:
-    import atexit
     atexit.register(io_bridge.shutdown)   # everything OFF when the API exits
 
+
 # ============================================================
-# Hardware abstraction - calls C++ driver or simulates
+# Hardware abstraction (hardware_controller.py) - IOBridge or simulation
 # ============================================================
-
-# Simulation thermal model (no IO board): the simulated chamber follows the
-# commanded target the way the real PI loop does, so the UI always sees a
-# chamber temperature that moves toward the target.
-SIM_AMBIENT = 24.0
-SIM_HEAT_RATE = 0.5                      # C/s while heating toward target
-SIM_COOL_RATES = {'fast': 5.0 / 60, 'medium': 2.5 / 60, 'slow': 1.0 / 60}  # C/s
-SIM_IDLE_RATE = 0.05                     # C/s drift back to ambient when idle
-# UI cooling modes -> fixed chamber-fan duty % (mirrors io_bridge COOLING_MODE_PWMS)
-COOLING_MODE_PWMS = {'fast': 100, 'medium': 60, 'slow': 30}
-
-
-class HardwareController:
-    def __init__(self, bridge=None):
-        self.bridge = bridge              # IOBridge (real io_controller drivers) or None
-        self.chamber_temp = SIM_AMBIENT
-        self._sim_time = time.time()
-        self.target_temp = None
-        self.door_closed = True
-        self.heating = False
-        self.cooling = False
-        self.cooling_mode = None       # 'fast' | 'medium' | 'slow'
-        self.uv_on = False
-        self.uv_intensity = 0
-        self.uv_wavelength = None       # 405 (Cure) | 450 (Bleaching)
-        self.damper_open = False
-        self.nitrogen_on = False
-        self.bofa_on = False
-        self._door_reclose_at = None      # sim: door re-reads closed after release
-        self.fans = {
-            'led_cooling': 0,
-            'chamber_intake': 0,
-            'chamber_heating': 0,
-        }
-
-    def _sim_tick(self):
-        """Advance the simulated chamber temperature toward the target."""
-        if self._door_reclose_at and time.time() >= self._door_reclose_at:
-            self.door_closed = True
-            self._door_reclose_at = None
-        now = time.time()
-        dt = min(max(now - self._sim_time, 0.0), 10.0)
-        self._sim_time = now
-        if dt <= 0:
-            return
-        if self.heating and self.target_temp is not None:
-            self.chamber_temp = min(float(self.target_temp),
-                                    self.chamber_temp + SIM_HEAT_RATE * dt)
-        elif self.cooling and self.target_temp is not None:
-            rate = SIM_COOL_RATES.get(self.cooling_mode, SIM_COOL_RATES['medium'])
-            self.chamber_temp = max(float(self.target_temp),
-                                    self.chamber_temp - rate * dt)
-        elif self.chamber_temp > SIM_AMBIENT:
-            self.chamber_temp = max(SIM_AMBIENT,
-                                    self.chamber_temp - SIM_IDLE_RATE * dt)
-        self.chamber_temp = round(self.chamber_temp, 1)
-
-    def get_state(self):
-        if self.bridge:
-            try:
-                return self.bridge.get_state()
-            except Exception as e:        # noqa: BLE001 - fall back to simulation
-                print(f"[HW] state read failed: {e}")
-        if HW_AVAILABLE:
-            return hw_driver.get_state()
-        self._sim_tick()
-        base = self.chamber_temp
-        return {
-            'chamberTemp': self.chamber_temp,
-            'targetTemp': self.target_temp,
-            'doorClosed': self.door_closed,
-            'isHeating': self.heating,
-            'isCooling': self.cooling,
-            'coolingMode': self.cooling_mode,
-            'coolingFanPwm': (COOLING_MODE_PWMS.get(self.cooling_mode)
-                              if self.cooling else None),
-            'uvOn': self.uv_on,
-            'uvIntensity': self.uv_intensity,
-            'uvWavelength': self.uv_wavelength,
-            'damperOpen': self.damper_open,
-            'fans': self.fans,
-            'fanRpm': {k: (2850 if v > 0 else 0) for k, v in self.fans.items()},
-            'ledTemps': {'left': round(base + 1.5, 1), 'right': round(base + 2.0, 1),
-                         'door': round(base + 0.5, 1), 'back': round(base + 1.0, 1)},
-            'nitrogenActive': self.nitrogen_on,
-            'n2LinePressure': 6.0,        # simulated line pressure (no sensor off-Pi)
-            'bofaOn': self.bofa_on,
-            'faults': {'heater': None, 'cooling': None, 'led': None},
-            'hwSource': 'simulation',
-        }
-
-    def set_target_temp(self, temp):
-        self.target_temp = temp
-        if self.bridge:
-            ok, why = self.bridge.set_target_temp(temp)
-            self.heating = ok
-            return ok, why
-        if HW_AVAILABLE:
-            hw_driver.set_target_temperature(temp)
-        self.heating = True               # simulation ramps toward the target
-        return True, None
-
-    def stop_heating(self):
-        self.heating = False
-        if self.bridge:
-            return self.bridge.stop_heating()
-        return True, None
-
-    def set_fan_speed(self, fan, speed):
-        self.fans[fan] = speed
-        if self.bridge:
-            return self.bridge.set_fan_speed(fan, speed)
-        if HW_AVAILABLE:
-            hw_driver.set_fan_speed(fan, speed)
-        return True, None
-
-    def set_damper(self, open_state):
-        self.damper_open = open_state
-        if self.bridge:
-            return self.bridge.set_damper(open_state)
-        if HW_AVAILABLE:
-            hw_driver.set_damper(open_state)
-        return True, None
-
-    def open_door(self):
-        if self.bridge:
-            return self.bridge.open_door()
-        if HW_AVAILABLE:
-            hw_driver.open_door()
-            return True, None
-        # Simulation: the magnet releases and the operator shuts the door
-        # again — mirror that so the door does not stay "open" forever.
-        self.door_closed = False
-        self._door_reclose_at = time.time() + 5.0
-        return True, None
-
-    def ack_door_abort(self):
-        """User acknowledged the door-abort alert: strip returns to normal."""
-        if self.bridge:
-            return self.bridge.ack_door_abort()
-        return True, None      # simulation: nothing to clear
-
-    # ---- low-level output control (driver calls are optional/guarded) ----
-    def set_heating(self, on):
-        self.heating = bool(on)
-        if on:
-            self.cooling = False
-        if HW_AVAILABLE and hasattr(hw_driver, 'set_heating'):
-            hw_driver.set_heating(bool(on))
-
-    def set_cooling(self, on, mode=None):
-        self.cooling = bool(on)
-        self.cooling_mode = mode if on else None
-        if on:
-            self.heating = False
-        if HW_AVAILABLE and hasattr(hw_driver, 'set_cooling'):
-            hw_driver.set_cooling(bool(on), mode)
-
-    def set_uv(self, on, intensity=0, wavelength=None):
-        self.uv_on = bool(on)
-        self.uv_intensity = int(intensity) if on else 0
-        self.uv_wavelength = wavelength if on else None
-        if self.bridge:
-            return self.bridge.set_uv(bool(on), int(intensity) if on else 0,
-                                      wavelength)
-        if HW_AVAILABLE and hasattr(hw_driver, 'set_uv'):
-            hw_driver.set_uv(bool(on), int(intensity) if on else 0, wavelength)
-        return True, None
-
-    def set_nitrogen(self, on):
-        """Open/close the N2 purge valve (GPIO13 on the IO board)."""
-        if self.bridge:
-            ok, why = self.bridge.set_nitrogen(on)
-            self.nitrogen_on = ok and bool(on)
-            return ok, why
-        self.nitrogen_on = bool(on)
-        return True, None
-
-    def set_rgb(self, on, color=None, brightness=None):
-        """Manual RGB strip override; off-Pi it is a no-op that reports ok."""
-        if self.bridge:
-            return self.bridge.set_rgb(on, color, brightness)
-        return True, None
-
-    def set_bofa(self, on):
-        """BOFA fume-extraction control (PCA channel 10)."""
-        if self.bridge:
-            ok, why = self.bridge.set_bofa(on)
-            self.bofa_on = ok and bool(on)
-            return ok, why
-        self.bofa_on = bool(on)
-        return True, None
-
-    # ---- high-level operation functions (one per recipe process) ----
-    # Each function owns starting / controlling / stopping its hardware. The
-    # process ends automatically per its own logic (target reached, etc.).
-    def heat_to_target_temperature(self, target_c):
-        """Heat the chamber to target_c. Ends when the target is reached."""
-        self.target_temp = target_c
-        if self.bridge:
-            return self.bridge.heat_to_target(target_c)
-        self.set_uv(False)
-        self.set_cooling(False)
-        self.heating = True
-        return True, None
-
-    def dry_to_target_temperature(self, target_c):
-        """Run drying toward target_c; the process logic stops it automatically."""
-        self.target_temp = target_c
-        if self.bridge:
-            return self.bridge.dry_to_target(target_c)
-        self.set_uv(False)
-        self.set_cooling(False)
-        self.heating = True
-        return True, None
-
-    def cure_uv_405(self, target_c, intensity_pct):
-        """Cure: heater to target_c + UV 405 nm at intensity_pct."""
-        self.target_temp = target_c
-        if self.bridge:
-            return self.bridge.cure_uv(target_c, intensity_pct, 405)
-        self.set_cooling(False)
-        self.heating = True
-        self.set_uv(True, intensity_pct, 405)
-        return True, None
-
-    def cure_uv_450(self, target_c, intensity_pct):
-        """Bleaching: heater to target_c + UV 450 nm at intensity_pct."""
-        self.target_temp = target_c
-        if self.bridge:
-            return self.bridge.cure_uv(target_c, intensity_pct, 450)
-        self.set_cooling(False)
-        self.heating = True
-        self.set_uv(True, intensity_pct, 450)
-        return True, None
-
-    def cool_to_target_temperature(self, target_c, mode):
-        """Cool the chamber to target_c in mode (fast/medium/slow). Ends when reached."""
-        self.target_temp = target_c
-        if self.bridge:
-            return self.bridge.cool_to_target(target_c, mode)
-        self.set_uv(False)
-        self.set_heating(False)
-        self.set_cooling(True, mode)
-        # FAST cooling: the LED-cooling fans join the chamber fan (mirrors
-        # the io_bridge behavior so the UI sees the same fans state off-Pi).
-        self.fans['led_cooling'] = 100 if mode == 'fast' else 0
-        self.fans['chamber_intake'] = COOLING_MODE_PWMS.get(mode, 60)
-        return True, None
-
-    def stop_all(self, immediate=False):
-        """Stop every cure output (heater, UV, cooling, N2).
-        immediate=True (abort): no heater-fan run-on."""
-        self.nitrogen_on = False
-        if self.bridge:
-            return self.bridge.stop_all(immediate)
-        self.set_uv(False)
-        self.set_heating(False)
-        self.set_cooling(False)
-        self.fans['led_cooling'] = 0
-        self.fans['chamber_intake'] = 0
-        return True, None
-
-    def run_fan_test(self, fan=None):
-        if self.bridge:
-            return self.bridge.run_fan_test(fan)
-        if HW_AVAILABLE:
-            return hw_driver.run_fan_test()
-        return {'rpm': 2850, 'status': 'OK'}
-
-    def run_led_test(self):
-        if self.bridge:
-            return self.bridge.run_led_test()
-        if HW_AVAILABLE:
-            return hw_driver.run_led_test()
-        return {
-            'results': [
-                {'name': 'Font LED', 'temp': 62, 'status': 'OK'},
-                {'name': 'Left LED', 'temp': 62, 'status': 'OK'},
-                {'name': 'Door LED', 'temp': 62, 'status': 'OK'},
-                {'name': 'Right LED', 'temp': 62, 'status': 'OK'},
-            ]
-        }
-
-
 hw = HardwareController(io_bridge)
 
 
 # ============================================================
-# Component runtime counters (real ON-hours, persisted)
+# Component runtime counters (storage.ComponentCounters, real ON-hours)
 # ============================================================
-class ComponentCounters:
-    """Accumulates the real ON-time of the wear components and persists it.
+counters = ComponentCounters(os.path.join(DATA_DIR, 'component_counters.json'),
+                             hw.get_state)
 
-    Samples the authoritative hardware state every TICK seconds:
-      led405 / led450 - UV on at that wavelength
-      heater          - heater element actually energized (heaterOut: the
-                        instantaneous delta-sigma ON/OFF output, not merely
-                        "heating mode" - the PI controller streams the
-                        element ON and OFF; fallback: heaterPwm > 0)
-      heaterFan       - measured tach RPM (fallback: commanded duty)
-      coolingFan      - measured tach RPM (fallback: commanded duty)
-
-    Seconds are flushed atomically (tmp + os.replace) to a JSON file every
-    FLUSH_SEC while something is running, and once more on process exit, so
-    the totals survive reboots and power cuts (worst case: the last minute).
-    """
-
-    KEYS = ('led405', 'led450', 'coolingFan', 'heater', 'heaterFan')
-    TICK = 2.0
-    FLUSH_SEC = 60.0
-
-    def __init__(self, path):
-        self.path = path
-        self._lock = threading.Lock()
-        self._dirty = False
-        self.seconds = {k: 0.0 for k in self.KEYS}
-        try:
-            with open(self.path, encoding='utf-8') as f:
-                saved = json.load(f)
-            for k in self.KEYS:
-                self.seconds[k] = max(0.0, float(saved.get(k, 0.0)))
-            print(f"[COUNTERS] loaded: " +
-                  ', '.join(f'{k}={v/3600:.1f}h' for k, v in self.seconds.items()))
-        except FileNotFoundError:
-            print("[COUNTERS] no saved counters - starting from zero")
-        except Exception as e:  # noqa: BLE001 - corrupt file: keep zeros, will rewrite
-            print(f"[COUNTERS] load failed ({e}) - starting from zero")
-        threading.Thread(target=self._run, daemon=True,
-                         name='component-counters').start()
-
-    def hours(self):
-        """Current totals in hours (1 decimal), for /api/state."""
-        with self._lock:
-            return {k: round(v / 3600.0, 1) for k, v in self.seconds.items()}
-
-    def flush(self):
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        with self._lock:
-            payload = {k: round(v, 1) for k, v in self.seconds.items()}
-        tmp = self.path + '.tmp'
-        with open(tmp, 'w', encoding='utf-8') as f:
-            json.dump(payload, f)
-        os.replace(tmp, self.path)
-
-    def _sample(self):
-        s = hw.get_state()
-        rpm = s.get('fanRpm') or {}
-        duty = s.get('fans') or {}
-        heater_pwm = s.get('heaterPwm')
-        heater_out = s.get('heaterOut')
-        return {
-            'led405': bool(s.get('uvOn')) and s.get('uvWavelength') == 405,
-            'led450': bool(s.get('uvOn')) and s.get('uvWavelength') == 450,
-            # Guarded by isHeating: the element can only be energized while
-            # the heating loop is active — a stale heaterOut/heaterPwm after
-            # a stop must never count (this is how heater hours once ran past
-            # the heater-fan hours, which is physically impossible).
-            'heater': bool(s.get('isHeating')) and (
-                bool(heater_out) if heater_out is not None
-                else (heater_pwm > 0) if heater_pwm is not None
-                else True),
-            'heaterFan': rpm.get('chamber_heating', 0) > 0
-                         or duty.get('chamber_heating', 0) > 0,
-            'coolingFan': rpm.get('chamber_intake', 0) > 0
-                          or duty.get('chamber_intake', 0) > 0,
-        }
-
-    def _run(self):
-        last_flush = time.monotonic()
-        while True:
-            time.sleep(self.TICK)
-            try:
-                on = self._sample()
-            except Exception:  # noqa: BLE001 - state read failed: skip the tick
-                continue
-            with self._lock:
-                for k, active in on.items():
-                    if active:
-                        self.seconds[k] += self.TICK
-                        self._dirty = True
-            if self._dirty and time.monotonic() - last_flush >= self.FLUSH_SEC:
-                try:
-                    self.flush()
-                    self._dirty = False
-                    last_flush = time.monotonic()
-                except Exception as e:  # noqa: BLE001 - disk hiccup: retry next round
-                    print(f"[COUNTERS] flush failed: {e}")
-
-
-counters = ComponentCounters(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                 'data', 'component_counters.json'))
-
-import atexit
-atexit.register(lambda: counters.flush())
+atexit.register(counters.flush)
 
 # ============================================================
 # API Endpoints
@@ -617,38 +239,7 @@ def _require_db():
     return jsonify({'ok': False, 'message': 'Database not configured (set DATABASE_URL)'}), 503
 
 
-# --- Persistent user-program store (JSON file on the SSD) ------------------
-# When Postgres is NOT configured, user work programs are still saved to a file
-# on disk so they SURVIVE A POWER-OFF. Browser localStorage alone is fragile
-# (per-browser, cleared on profile reset) - this file is the durable store.
-# It lives in server/data/ (gitignored, so `git pull` never deletes it) and is
-# written atomically (temp file + fsync + rename) so a power cut mid-write
-# cannot corrupt it.
-_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
-_USER_MATERIALS_FILE = os.path.join(_DATA_DIR, 'user_materials.json')
-
-
-def _load_user_materials_file():
-    try:
-        with open(_USER_MATERIALS_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        return data if isinstance(data, list) else []
-    except FileNotFoundError:
-        return []
-    except Exception as e:  # noqa: BLE001 - corrupt/unreadable: start empty, don't crash
-        print(f"[DATA] user programs read failed: {e}")
-        return []
-
-
-def _save_user_materials_file(materials):
-    os.makedirs(_DATA_DIR, exist_ok=True)
-    tmp = _USER_MATERIALS_FILE + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as f:
-        json.dump(materials, f, ensure_ascii=False, indent=2)
-        f.flush()
-        os.fsync(f.fileno())          # force the bytes to the SSD before rename
-    os.replace(tmp, _USER_MATERIALS_FILE)   # atomic swap
-
+# --- Persistent user-program store: storage.py (JSON file, atomic writes) --
 
 @app.route('/api/materials/presets', methods=['GET'])
 def get_preset_materials():
@@ -658,313 +249,70 @@ def get_preset_materials():
     return jsonify(db.get_materials(presets_only=True))
 
 
+# --- Durable file store for histories: storage.CureFileStore ---------------
+_cure_files = CureFileStore()
+
+
+# --- Data access shared by the routes and the cloud agent -----------------
+# Postgres when configured (db.py), else the durable JSON files on disk
+# (storage.py, survive power-off).
+def _programs():
+    return db.get_materials(presets_only=False) if _db_on() \
+        else load_user_materials()
+
+
+def _save_programs(mats):
+    if _db_on():
+        db.replace_user_materials(mats)
+    else:
+        save_user_materials(mats)
+
+
+def _prints():
+    if _db_on():
+        return db.get_print_history()
+    with history_lock:
+        return load_json_file(PRINT_HISTORY_FILE, [])
+
+
+def _save_prints(logs):
+    if _db_on():
+        db.replace_print_history(logs)
+    else:
+        with history_lock:
+            save_json_file(PRINT_HISTORY_FILE, logs)
+
+
+def _cure_list():
+    return db.get_cure_history() if _db_on() else _cure_files.list()
+
+
 @app.route('/api/materials/user', methods=['GET'])
 def get_user_materials():
-    """User-created work programs. Postgres when configured, else the durable
-    JSON file on disk (survives power-off)."""
-    if _db_on():
-        return jsonify(db.get_materials(presets_only=False))
-    return jsonify(_load_user_materials_file())
+    """User-created work programs."""
+    return jsonify(_programs())
 
 
 @app.route('/api/materials/user', methods=['POST'])
 def save_all_user_materials():
-    """Save all user work programs (full replace). Postgres when configured,
-    else persisted to the JSON file on disk."""
-    materials = request.json or []
-    if _db_on():
-        db.replace_user_materials(materials)
-    else:
-        _save_user_materials_file(materials)
+    """Save all user work programs (full replace)."""
+    _save_programs(request.json or [])
     return jsonify({'ok': True})
 
 
-# --- Durable file store for histories (no-Postgres fallback) ---------------
-# Same contract as the user-program file above: everything the UI records -
-# received prints, cure runs (with telemetry) and generated cure reports -
-# is persisted under server/data/ so it SURVIVES A POWER-OFF. Written
-# atomically (temp + fsync + rename); a power cut mid-write cannot corrupt
-# an existing file. When Postgres IS configured it stays authoritative and
-# these files are not touched.
-_PRINT_HISTORY_FILE = os.path.join(_DATA_DIR, 'print_history.json')
-_CURE_HISTORY_FILE = os.path.join(_DATA_DIR, 'cure_history.json')
-_CURE_REPORTS_FILE = os.path.join(_DATA_DIR, 'cure_reports.json')
-_history_lock = threading.Lock()          # serializes read-modify-write cycles
-_TELEMETRY_FLUSH_EVERY = 15               # samples between telemetry flushes
-
-
-def _load_json_file(path, default):
-    try:
-        with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        return data if isinstance(data, type(default)) else default
-    except FileNotFoundError:
-        return default
-    except Exception as e:  # noqa: BLE001 - corrupt file: start empty, don't crash
-        print(f"[DATA] read failed ({os.path.basename(path)}): {e}")
-        return default
-
-
-def _save_json_file(path, data):
-    os.makedirs(_DATA_DIR, exist_ok=True)
-    tmp = path + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
-
-
-class _CureFileStore:
-    """Cure runs + telemetry + reports in server/data/*.json.
-
-    Start/finish/report writes flush immediately; telemetry (one sample per
-    second during a run) flushes every _TELEMETRY_FLUSH_EVERY samples so the
-    SSD is not rewritten every second - a power cut loses at most the last
-    few seconds of the graph, never the run itself.
-    """
-
-    def __init__(self):
-        with _history_lock:
-            self.runs = _load_json_file(_CURE_HISTORY_FILE, [])
-            self.reports = _load_json_file(_CURE_REPORTS_FILE, {})
-            self._unflushed = 0
-            # a run left 'running' by a power cut can never finish - mark it
-            changed = False
-            for r in self.runs:
-                if r.get('status') == 'running':
-                    r['status'] = 'error'
-                    changed = True
-            if changed:
-                self._flush_runs()
-
-    def _flush_runs(self):
-        _save_json_file(_CURE_HISTORY_FILE, self.runs)
-
-    def list(self):
-        with _history_lock:
-            return list(self.runs)
-
-    def _find(self, ext_id):
-        for r in self.runs:
-            if r.get('id') == ext_id:
-                return r
-        return None
-
-    def start(self, ext_id, d):
-        with _history_lock:
-            if self._find(ext_id) is None:
-                self.runs.insert(0, {
-                    'id': ext_id,
-                    'materialName': d.get('materialName'),
-                    'steps': d.get('steps'),
-                    'stepsCompleted': 0,
-                    'startedAt': time.strftime('%Y-%m-%dT%H:%M:%S'),
-                    'endedAt': None,
-                    'duration': None,
-                    'status': 'running',
-                    'phases': d.get('phases') or [],
-                    'targetTemp': d.get('targetTemp'),
-                    'serialNumber': d.get('serialNumber'),
-                    'telemetry': [],
-                })
-            self._flush_runs()
-
-    def telemetry(self, ext_id, sample):
-        with _history_lock:
-            r = self._find(ext_id)
-            if r is None:
-                return False
-            r.setdefault('telemetry', []).append(sample)
-            self._unflushed += 1
-            if self._unflushed >= _TELEMETRY_FLUSH_EVERY:
-                self._flush_runs()
-                self._unflushed = 0
-            return True
-
-    def finish(self, ext_id, status, steps_completed):
-        with _history_lock:
-            r = self._find(ext_id)
-            if r is None:
-                return False
-            r['status'] = status
-            r['endedAt'] = time.strftime('%Y-%m-%dT%H:%M:%S')
-            if steps_completed is not None:
-                r['stepsCompleted'] = steps_completed
-            try:
-                t0 = time.mktime(time.strptime(r['startedAt'], '%Y-%m-%dT%H:%M:%S'))
-                r['duration'] = int(time.time() - t0)
-            except Exception:  # noqa: BLE001 - unparsable start: leave duration
-                pass
-            self._flush_runs()
-            return True
-
-    def save_report(self, ext_id, d):
-        with _history_lock:
-            self.reports[ext_id] = {'content': d.get('content'),
-                                    'summary': d.get('summary'),
-                                    'format': d.get('format', 'html')}
-            _save_json_file(_CURE_REPORTS_FILE, self.reports)
-        return ext_id
-
-    def get_report(self, ext_id):
-        with _history_lock:
-            return self.reports.get(ext_id)
-
-
-_cure_files = _CureFileStore()
-
-
 # ============================================================
-# Cloud sync agent (sCure Cloud portal, cloud/portal.py)
+# Cloud sync agent (cloud_sync.CloudSync -> cloud/portal.py)
 # ============================================================
-class CloudSync:
-    """Connects the machine OUT to the sCure Cloud portal.
-
-    Enabled by server/data/cloud.json:
-        {"url": "https://portal.example.com", "key": "<machine secret>",
-         "name": "CureBox-1", "interval": 10}
-    Every `interval` seconds it POSTs a snapshot (state, counters, programs,
-    prints, cure summaries) to /api/agent/sync and applies the returned
-    DATA-ONLY commands:
-        upsert_program / delete_program - work programs (work points)
-        send_print                      - simulated received print
-    There is deliberately no command that actuates hardware - heater/UV can
-    only be started at the machine. Outbound-only: no inbound ports needed,
-    works behind any NAT/firewall. Applied command ids are acked on the
-    next sync so a command is never applied twice.
-    """
-
-    def __init__(self):
-        self.enabled = False
-        self.last_ok = None           # epoch of the last successful sync
-        self.error = None
-        self.cfg = {}
-        try:
-            with open(os.path.join(_DATA_DIR, 'cloud.json'), encoding='utf-8') as f:
-                self.cfg = json.load(f)
-        except FileNotFoundError:
-            return                    # not configured - agent stays off
-        except Exception as e:        # noqa: BLE001 - unreadable config
-            self.error = f'bad cloud.json: {e}'
-            return
-        if not (self.cfg.get('url') and self.cfg.get('key')):
-            self.error = 'cloud.json needs "url" and "key"'
-            return
-        self.enabled = True
-        self._ack = []
-        threading.Thread(target=self._run, daemon=True, name='cloud-sync').start()
-        print(f"[CLOUD] sync agent ON -> {self.cfg['url']}")
-
-    def status(self):
-        return {'enabled': self.enabled, 'lastSyncOk': self.last_ok,
-                'error': self.error}
-
-    # -- data access through the same stores the API uses ------------------
-    @staticmethod
-    def _get_programs():
-        return db.get_materials(presets_only=False) if _db_on() \
-            else _load_user_materials_file()
-
-    @staticmethod
-    def _put_programs(mats):
-        if _db_on():
-            db.replace_user_materials(mats)
-        else:
-            _save_user_materials_file(mats)
-
-    @staticmethod
-    def _get_prints():
-        if _db_on():
-            return db.get_print_history()
-        with _history_lock:
-            return _load_json_file(_PRINT_HISTORY_FILE, [])
-
-    @staticmethod
-    def _put_prints(logs):
-        if _db_on():
-            db.replace_print_history(logs)
-        else:
-            with _history_lock:
-                _save_json_file(_PRINT_HISTORY_FILE, logs)
-
-    def _snapshot(self):
-        try:
-            s = hw.get_state()
-            state = {k: s.get(k) for k in ('chamberTemp', 'doorClosed',
-                                           'isHeating', 'isCooling', 'uvOn',
-                                           'internetOk')}
-            state['counters'] = counters.hours()
-        except Exception:             # noqa: BLE001 - snapshot must never die
-            state = {}
-        cures = db.get_cure_history() if _db_on() else _cure_files.list()
-        cures = [{k: v for k, v in c.items() if k != 'telemetry'}
-                 for c in cures[:10]]
-        return {'name': self.cfg.get('name', 'CureBox'), 'state': state,
-                'programs': self._get_programs(),
-                'prints': self._get_prints()[:20], 'cures': cures,
-                'ackIds': self._ack}
-
-    def _apply(self, cmd):
-        ctype, p = cmd.get('type'), cmd.get('payload') or {}
-        if ctype == 'upsert_program':
-            mats = [m for m in self._get_programs() if m.get('id') != p.get('id')]
-            self._put_programs(mats + [p])
-            print(f"[CLOUD] program saved from portal: {p.get('name')}")
-        elif ctype == 'delete_program':
-            self._put_programs([m for m in self._get_programs()
-                                if m.get('id') != p.get('id')])
-            print(f"[CLOUD] program deleted from portal: {p.get('id')}")
-        elif ctype == 'send_print':
-            prog = next((m for m in self._get_programs()
-                         if m.get('name') == p.get('materialName')), None)
-            log = {'id': f'cloud-{int(time.time() * 1000)}',
-                   'printName': p.get('printName') or 'Job',
-                   'materialName': p.get('materialName') or '',
-                   'printerName': p.get('printerName') or 'CLOUD',
-                   'date': time.strftime('%Y-%m-%dT%H:%M:%S'),
-                   'duration': int(p.get('duration')
-                                   or (prog or {}).get('totalDuration') or 20),
-                   'status': 'completed',
-                   'steps': len((prog or {}).get('steps') or []) or int(p.get('steps') or 0),
-                   'csvFile': p.get('csvFile') or ''}
-            self._put_prints([log] + self._get_prints())
-            print(f"[CLOUD] simulated print received: {log['printName']} "
-                  f"({log['printerName']})")
-        else:
-            return False
-        return True
-
-    def _run(self):
-        import urllib.request
-        interval = max(3.0, float(self.cfg.get('interval', 10)))
-        url = self.cfg['url'].rstrip('/') + '/api/agent/sync'
-        while True:
-            try:
-                req = urllib.request.Request(
-                    url, data=json.dumps(self._snapshot()).encode('utf-8'),
-                    method='POST',
-                    headers={'Content-Type': 'application/json',
-                             'X-Machine-Key': self.cfg['key']})
-                with urllib.request.urlopen(req, timeout=10) as r:
-                    resp = json.load(r)
-                self.last_ok = time.time()
-                self.error = None
-                acked = []
-                for cmd in resp.get('commands') or []:
-                    try:
-                        if self._apply(cmd):
-                            acked.append(cmd.get('id'))
-                    except Exception as e:  # noqa: BLE001 - one bad command
-                        print(f"[CLOUD] command {cmd.get('type')} failed: {e}")
-                        acked.append(cmd.get('id'))   # ack anyway: don't loop
-                self._ack = acked
-            except Exception as e:    # noqa: BLE001 - portal unreachable
-                self.error = str(e)
-            time.sleep(interval)
+def _make_cloud_sync():
+    return CloudSync(DATA_DIR, hw.get_state, counters,
+                     get_programs=_programs,
+                     put_programs=_save_programs,
+                     get_prints=_prints,
+                     put_prints=_save_prints,
+                     list_cures=_cure_list)
 
 
-cloud_sync = CloudSync()
+cloud_sync = _make_cloud_sync()
 
 
 @app.route('/api/cloud/config', methods=['POST'])
@@ -980,37 +328,28 @@ def cloud_config():
     d = request.get_json(silent=True) or {}
     if not (d.get('url') and d.get('key')):
         return jsonify({'ok': False, 'message': 'url and key required'}), 400
-    os.makedirs(_DATA_DIR, exist_ok=True)
+    os.makedirs(DATA_DIR, exist_ok=True)
     cfg = {'url': d['url'], 'key': d['key'],
            'name': d.get('name', 'CureBox'),
            'interval': d.get('interval', 10)}
-    with open(os.path.join(_DATA_DIR, 'cloud.json'), 'w', encoding='utf-8') as f:
-        json.dump(cfg, f, indent=2)
+    save_json_file(os.path.join(DATA_DIR, 'cloud.json'), cfg)
     if cloud_sync.enabled:
         return jsonify({'ok': True,
                         'message': 'Config saved - restart to apply (agent already running)'})
-    cloud_sync = CloudSync()              # starts the agent with the new config
+    cloud_sync = _make_cloud_sync()       # starts the agent with the new config
     return jsonify({'ok': True, 'message': 'Cloud sync agent started'})
 
 
 @app.route('/api/print-history', methods=['GET'])
 def get_print_history():
-    """Print history: Postgres when configured, else the durable file."""
-    if _db_on():
-        return jsonify(db.get_print_history())
-    with _history_lock:
-        return jsonify(_load_json_file(_PRINT_HISTORY_FILE, []))
+    """Print history (received prints)."""
+    return jsonify(_prints())
 
 
 @app.route('/api/print-history', methods=['POST'])
 def save_print_history():
-    """Save print history (full replace), to Postgres or the durable file."""
-    logs = request.json or []
-    if _db_on():
-        db.replace_print_history(logs)
-    else:
-        with _history_lock:
-            _save_json_file(_PRINT_HISTORY_FILE, logs)
+    """Save print history (full replace)."""
+    _save_prints(request.json or [])
     return jsonify({'ok': True})
 
 
@@ -1018,10 +357,8 @@ def save_print_history():
 
 @app.route('/api/cure-history', methods=['GET'])
 def cure_history_list():
-    """Cure History (§8): Postgres when configured, else the durable file."""
-    if _db_on():
-        return jsonify(db.get_cure_history())
-    return jsonify(_cure_files.list())
+    """Cure History (§8)."""
+    return jsonify(_cure_list())
 
 
 @app.route('/api/cure-runs/<ext_id>/start', methods=['POST'])
@@ -1080,14 +417,14 @@ def cure_run_report_get(ext_id):
 # records accumulate in server/data/phase_timings.json (same durable folder
 # as everything else) and are the raw data for estimating what each program
 # REALLY takes: heating rate to each target, drying/cure holds, cooling time.
-_PHASE_TIMINGS_FILE = os.path.join(_DATA_DIR, 'phase_timings.json')
+# File: storage.PHASE_TIMINGS_FILE
 
 
 @app.route('/api/phase-timings', methods=['GET'])
 def phase_timings_list():
     """All collected phase timings (newest last)."""
-    with _history_lock:
-        return jsonify(_load_json_file(_PHASE_TIMINGS_FILE, []))
+    with history_lock:
+        return jsonify(load_json_file(PHASE_TIMINGS_FILE, []))
 
 
 @app.route('/api/cure-runs/<ext_id>/phase', methods=['POST'])
@@ -1110,10 +447,10 @@ def cure_run_phase(ext_id):
         'tempStart': d.get('tempStart'),
         'tempEnd': d.get('tempEnd'),
     }
-    with _history_lock:
-        rows = _load_json_file(_PHASE_TIMINGS_FILE, [])
+    with history_lock:
+        rows = load_json_file(PHASE_TIMINGS_FILE, [])
         rows.append(rec)
-        _save_json_file(_PHASE_TIMINGS_FILE, rows)
+        save_json_file(PHASE_TIMINGS_FILE, rows)
     return jsonify({'ok': True, 'count': len(rows)})
 
 
@@ -1530,6 +867,9 @@ DIST_DIR = os.path.normpath(os.path.join(
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_ui(path):
+    if path.startswith('api/'):           # unknown API route: JSON 404, not index.html
+        return jsonify({'ok': False, 'code': 404,
+                        'message': 'Unknown API endpoint'}), 404
     if path and os.path.exists(os.path.join(DIST_DIR, path)):
         return send_from_directory(DIST_DIR, path)
     if os.path.exists(os.path.join(DIST_DIR, 'index.html')):
@@ -1539,12 +879,18 @@ def serve_ui(path):
 
 
 if __name__ == '__main__':
+    # systemctl stop sends SIGTERM; Python's default handler exits WITHOUT
+    # running atexit (io_bridge.shutdown -> all outputs OFF, counters.flush).
+    # Turn it into SystemExit so those handlers run. Main thread only:
+    # desktop.py imports this module from a worker thread, where
+    # signal.signal() would raise.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     port = int(os.environ.get('PORT', 3001))
     print(f"[sCure API] Starting on port {port}")
     if io_bridge is not None:
         print("[sCure API] Hardware driver: IO BOARD (io_controller bridge)")
     else:
-        print(f"[sCure API] Hardware driver: {'CONNECTED (C++)' if HW_AVAILABLE else 'SIMULATION'}")
+        print("[sCure API] Hardware driver: SIMULATION")
     if db is not None and db.available():
         try:
             db.init_schema()

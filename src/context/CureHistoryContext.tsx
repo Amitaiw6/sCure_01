@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import type { ReactNode } from 'react'
+import { API_BASE } from '@/services/hardware-api'
 
 export interface TelemetrySample {
   t: number                     // seconds since start
@@ -34,12 +35,10 @@ interface CureHistoryContextType {
   recordTelemetry: (id: string, sample: TelemetrySample) => void
 }
 
-const API_BASE = 'http://localhost:3001'
-
 // Cure history is managed in PostgreSQL via the backend (§10) — API only.
 async function apiGetCureHistory(): Promise<CureLog[] | null> {
   try {
-    const res = await fetch(`${API_BASE}/api/cure-history`)
+    const res = await fetch(`${API_BASE}/cure-history`)
     if (res.ok) return await res.json()
   } catch { /* backend not available */ }
   return null
@@ -81,7 +80,7 @@ export function CureHistoryProvider({ children }: { children: ReactNode }) {
       serialNumber,
     }
     setLogs(prev => [log, ...prev])
-    apiPost(`/api/cure-runs/${id}/start`, { materialName, steps, phases, targetTemp, serialNumber })
+    apiPost(`/cure-runs/${id}/start`, { materialName, steps, phases, targetTemp, serialNumber })
     return id
   }, [])
 
@@ -92,7 +91,7 @@ export function CureHistoryProvider({ children }: { children: ReactNode }) {
       const duration = Math.round((new Date(endedAt).getTime() - new Date(l.startedAt).getTime()) / 1000)
       return { ...l, endedAt, duration, status, stepsCompleted: stepsCompleted ?? l.stepsCompleted }
     }))
-    apiPost(`/api/cure-runs/${id}/finish`, { status, stepsCompleted })
+    apiPost(`/cure-runs/${id}/finish`, { status, stepsCompleted })
   }, [])
 
   const recordTelemetry = useCallback((id: string, sample: TelemetrySample) => {
@@ -101,7 +100,7 @@ export function CureHistoryProvider({ children }: { children: ReactNode }) {
       const telemetry = [...(l.telemetry ?? []), sample]
       return { ...l, telemetry }
     }))
-    apiPost(`/api/cure-runs/${id}/telemetry`, sample)
+    apiPost(`/cure-runs/${id}/telemetry`, sample)
   }, [])
 
   const completeCure = useCallback((id: string) => {

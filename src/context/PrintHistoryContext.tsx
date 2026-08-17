@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
+import { API_BASE } from '@/services/hardware-api'
 
 export interface PrintLog {
   id: string
@@ -21,23 +22,23 @@ interface PrintHistoryContextType {
   isLoading: boolean
 }
 
-const API_BASE = 'http://localhost:3001'
-
 // Print history is managed in PostgreSQL and read via the backend API.
-// When the backend is unreachable (dev / offline), fall back to bundled demo prints.
+// When the backend is unreachable (dev / offline), fall back to bundled demo prints
+// in dev builds ONLY. Production falls back to an empty list so demo prints can
+// never be POSTed over the real server/data/print_history.json.
 import { DEMO_PRINTS } from '@/data/demo-data'
 
 async function loadPrintHistory(): Promise<PrintLog[]> {
   try {
-    const res = await fetch(`${API_BASE}/api/print-history`)
+    const res = await fetch(`${API_BASE}/print-history`)
     if (res.ok) return await res.json()
   } catch { /* backend not available */ }
-  return DEMO_PRINTS
+  return import.meta.env.DEV ? DEMO_PRINTS : []
 }
 
 async function savePrintHistory(logs: PrintLog[]) {
   try {
-    await fetch(`${API_BASE}/api/print-history`, {
+    await fetch(`${API_BASE}/print-history`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(logs),

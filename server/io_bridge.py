@@ -154,7 +154,7 @@ class StatusLeds(threading.Thread):
             if self._stop_evt.wait(self.net_check_sec):
                 return
 
-    def _mode(self):
+    def _mode(self, door=None):
         b = self.bridge
         try:
             cool = b.sys.cooling_status()
@@ -166,7 +166,7 @@ class StatusLeds(threading.Thread):
         # alert in the UI (POST /api/door-abort/ack) or starts a new process.
         if b._door_abort_ts:
             return 'fault'
-        if b.sys.door_open() is True:     # None (sensor unreadable) is not "open"
+        if door is True:                  # None (sensor unreadable) is not "open"
             return 'door'
         # Manual chamber heating (Settings slider, /api/chamber/temperature):
         # its own steady color, checked BEFORE the generic busy animation.
@@ -189,9 +189,11 @@ class StatusLeds(threading.Thread):
         output forced off. The check is independent of the displayed mode,
         so it fires even when a fault has priority on the strip."""
         b = self.bridge
+        door = None
         try:
+            door = b.sys.door_open()
             outputs_on = False
-            if b.sys.door_open() is True:
+            if door is True:
                 outputs_on = (b.temp.active or b.sys.cooling_status().get('active')
                               or b._uv.get('on') or b._n2_on or b._bofa_on
                               or any(d > 0 for d in b._fan_duty.values()))
@@ -212,7 +214,7 @@ class StatusLeds(threading.Thread):
                 self._door_open_since = None
         except Exception:                 # noqa: BLE001 - best-effort here; the
             pass                          # io_controller interlock still backs it up
-        return self._mode()
+        return self._mode(door)
 
     def _paint_chase(self, offset, color=None):
         """One frame of the busy animation: a comet with a fading tail that
@@ -384,10 +386,6 @@ class IOBridge:
         return {
             'chamberTemp': chamber if chamber is not None else heat.get('temp'),
             'targetTemp': target,
-            # Automatic internet watch (StatusLeds._net_watch): True/False,
-            # or null when the status thread is not running.
-            'internetOk': (bool(self.status_leds._internet_ok)
-                           if self.status_leds else None),
             # door_open(): True=open, False=closed, None=sensor unreadable.
             # Report null on unreadable so the UI keeps its last known state
             # instead of falsely flipping to "door open".

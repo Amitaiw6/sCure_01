@@ -41,3 +41,9 @@ cloud/portal_secrets.local.txt
 keys/*.key
 .venv/
 .mcp.json
+
+# Built update packages (release artifacts, not source)
+updates/
+
+# pytest cache
+.pytest_cache/

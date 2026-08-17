@@ -1,6 +1,8 @@
-// AUTO-GENERATED demo dataset (tools/_gen-demo.mjs).
-// Fallback used ONLY when the backend API is unreachable, so the app shows data
-// in dev / offline. When the Flask API + PostgreSQL run, the API is authoritative.
+// Bundled demo dataset, used only when the backend API is unreachable.
+//  - DEMO_PRESETS: the production preset list too (the default JSON-file
+//    deployment has no /api/materials/presets; the API is authoritative when it answers).
+//  - DEMO_USER_PROGRAMS / DEMO_PRINTS: dev builds only (import.meta.env.DEV);
+//    production falls back to [] so demo data can never overwrite machine data.
 import type { Material } from '@/context/MaterialContext'
 import type { PrintLog } from '@/context/PrintHistoryContext'
 

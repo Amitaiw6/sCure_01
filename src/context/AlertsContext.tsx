@@ -93,6 +93,7 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
       const known = parsed.filter(a => errorDefs.some(e => e.code === a.code))
       const hasActive = known.some(a => !a.dismissed)
       if (hasActive) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time restore from localStorage once the registry is loaded
         setActiveAlerts(known)
         return
       }

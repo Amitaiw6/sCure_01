@@ -2,7 +2,7 @@
 
 > Purpose: give the Architect, Developer and Reviewer agents a verified map of the **existing** system so every change starts from *what is already there*. This is a map, not a spec — verify a symbol before relying on it. Product requirements live in `docs/sCure_SRS.html`; UI source of truth is `design-handoff/sCure-UI.html`; the CSV data contract is `docs/CSV_Import_Guide.html`.
 >
-> Verified 2026-08-17 against the working tree (git history is unrelated — see "Repository state").
+> Verified 2026-08-17 against branch `refactor/clean-architecture` (baseline `main` = 4e75eb0). Refactor plan: `_bmad-output/planning-artifacts/refactor-architecture-plan.md`.
 
 ## 1. What the product is
 
@@ -13,8 +13,11 @@
 ```
 src/  (React 19 + TS 5.9 + Vite 8 + Tailwind 4 + shadcn)   — kiosk HMI, fixed 800x480, dark-only
    │  fetch + polling only (GET /api/state @1 s). No WS/SSE.
-server/app.py  (Python 3, Flask 3.1)                        — REST API, HardwareController facade,
-   │  JSON-file store (default) or PostgreSQL, updater, cloud sync agent, serves dist/
+server/app.py  (Python 3, Flask 3.1)                        — REST routes + wiring only; serves dist/
+   ├ server/hardware_controller.py  HardwareController facade: IOBridge (real) → built-in simulation
+   ├ server/storage.py              JSON-file persistence (server/data/, SCURE_DATA_DIR), CureFileStore, ComponentCounters
+   ├ server/cloud_sync.py           CloudSync outbound agent (deps injected by app.py)
+   ├ server/db.py (optional PostgreSQL), server/updater.py (signed USB updates)
 server/io_bridge.py  (IOBridge, StatusLeds)                 — maps API ops → io_controller, door watchdog, RGB status
 io_controller/  (Python 3)                                  — IOController → SystemController → TemperatureController / CoolingController
    │  smbus2 / gpiozero / lgpio / pinctrl / neopixel; all tuning in io_controller/components.json
@@ -22,16 +25,16 @@ hardware: PCA9685 (PWM: fans, heater, LEDs), TCA6424A (motors/valves/door magnet
           servo damper, fan tachs, RGB strip, door sensor GPIO27, UV SSRs GPIO16/20 + routing GPIO17
 ```
 
-Also: `cloud/portal.py` (Flask + SQLite portal, Fly.io), `server/hardware/` (legacy C++ pybind11 driver — superseded by `io_controller`, kept as tier-2 fallback), `qa-tool/index.html` (browser QA harness, ~200 declarative tests against the running server), `tools/*.mjs` (build/screenshot/diagram/SBOM helpers), `scripts/` (Pi setup/start, Windows start, bench-analysis Python).
+Also: `cloud/portal.py` (Flask + SQLite portal, Fly.io), `qa-tool/index.html` (browser QA harness, ~200 declarative tests against the running server), `tools/*.mjs` (build/screenshot/diagram/SBOM helpers), `scripts/` (Pi setup/start/kiosk, systemd unit, Windows launcher).
 
-**Hardware resolution in `server/app.py` `HardwareController`:** `IOBridge` (real board) → `hw_driver` (C++) → built-in thermal **simulation** (`hwSource: 'simulation'`). Off-Pi the whole stack runs in simulation; the UI additionally simulates ramps/cooling when `!hw.apiConnected`.
+**Hardware resolution in `server/hardware_controller.py` `HardwareController`:** `IOBridge` (real board) → built-in thermal **simulation** (`hwSource: 'simulation'`). Off-Pi the whole stack runs in simulation; the UI additionally simulates ramps/cooling when `!hw.apiConnected`.
 
 ## 3. Where things are (frontend `src/`)
 
 | Area | File | Notes / reusable exports |
 |---|---|---|
 | Entry / providers / 800×480 scaling | `src/main.tsx` | `DESIGN_W/H`, `fitToScreen()`, HashRouter on `file:` |
-| Gates + routes | `src/App.tsx` | order: loading → asleep(WakeScreen) → booting(BootScreen) → setup → screensaver; routes `/`, `/cure-process`, `/settings`, `/material-editor`, `/network`, `/alerts`, `/cure-history` |
+| Gates + routes | `src/App.tsx` | order: loading → asleep(WakeScreen) → booting(BootScreen) → setup → screensaver; routes `/`, `/cure-process`, `/settings`, `/network`, `/alerts`, `/cure-history` |
 | Theme / kiosk CSS | `src/index.css` | CSS vars under `:root` + `@theme inline`; no tailwind.config |
 | **All hardware/system HTTP calls** | `src/services/hardware-api.ts` | one function per endpoint; dev fallback `{ok:true,'Simulated in dev mode'}`; `DEV_BLOCKED` list; `UpdatePackage`, `fetchUpdatePackage` |
 | Live hardware state (1 s poll) | `src/context/HardwareContext.tsx` | `useHardware()`, `HardwareState`, `HardwareFaults` |
@@ -48,18 +51,22 @@ Also: `cloud/portal.py` (Flask + SQLite portal, Fly.io), `server/hardware/` (leg
 | Setup wizard | `src/pages/SetupPage.tsx` | name via `OnScreenKeyboard`, org UUID from CSV on USB |
 | Compliance / SHA-256 | `src/lib/compliance.ts` | `sha256Hex`, `verifyUpdatePackage`, `COMPLIANCE_*` tables |
 | `cn()` | `src/lib/utils.ts` | |
-| Reusable components | `src/components/` | `CircularGauge`, `PhaseCard`, `StepCard` (+`StepData`,`ProcessType`), `StepModal`, `OnScreenKeyboard` (portal), `AbortModal`, `MaterialItem`, `SectionHeader`, `TopBar`, `WakeScreen`, `BootScreen`, `SCureLogo`, modals `CsvBuilderModal`, `ImportCsvModal`, `PrintHistoryModal`, `UpdateModal`, `VersionsModal`, `ComplianceModal` |
-| shadcn primitives | `src/components/ui/` | `button`, `badge`, `card`, `dialog`, `select`, `input`, `progress`, `separator`, `switch`, custom touch inputs `touch-number.tsx` (`TouchNumber`), `touch-spinner.tsx` (`TouchSpinner`) |
+| Reusable components | `src/components/` | `CircularGauge`, `PhaseCard`, `OnScreenKeyboard` (portal), `AbortModal`, `MaterialItem`, `TopBar`, `WakeScreen`, `BootScreen`, `SCureLogo`, modals `CsvBuilderModal`, `ImportCsvModal`, `PrintHistoryModal`, `UpdateModal`, `VersionsModal`, `ComplianceModal` |
+| shadcn primitives | `src/components/ui/` | `button`, `badge`, `dialog`, `select`, `input`, `progress`, `switch`, custom touch input `touch-number.tsx` (`TouchNumber`) |
+| **Process limits (single source)** | `src/lib/limits.ts` | `HEAT_MIN_TEMP`, `NO_HEAT_MIN_TEMP`, `HEAT_MAX_TEMP`, `COOL_MIN/MAX_TEMP`, `NO_HEAT_FLOOR`, `UV_MIN/MAX`, `TIME_MAX_MIN(_BLEACH)`, `isHeatType()`, `isUvProcess()` — used by `parseCsv`, `CsvBuilderModal`, `CureProcessPage`. Server-side hardware limits differ by design (`server/app.py` validation constants). |
 | Offline demo data | `src/data/demo-data.ts` | `DEMO_PRESETS`, `DEMO_USER_PROGRAMS`, `DEMO_PRINTS` |
 | Static config | `public/config/{system,errors,versions}.json`, `public/materials/`, `public/compliance/sbom.json` | |
 
-Known duplications (candidates to consolidate *only when a task touches them*): `StepCard.tsx` re-declares `TimerMode/UvStartMode/CoolingMode/ProcessType` from `MaterialContext`; `HEAT_MIN_TEMP=30` in both `CureProcessPage.tsx` and `StepModal.tsx`; three contexts hardcode `http://localhost:3001` while `hardware-api.ts` uses `VITE_HW_API_URL`; `StartCureButton.tsx` and `src/assets/*` are unused leftovers.
+Cleaned up in the 2026-08 refactor: step-type unions come from `MaterialContext` (`ProcessType` exported), limits from `src/lib/limits.ts`, one `API_BASE` exported from `hardware-api.ts`; the unreachable `/material-editor` page (`MaterialEditorPage`/`StepCard`/`StepModal`), `StartCureButton`, `SectionHeader`, unused shadcn primitives and `src/assets/*` are parked under `Not_Relevant/`. Demo user programs / prints load only in `import.meta.env.DEV`; `DEMO_PRESETS` remains the production preset fallback (no-DB deployments get 503 from `/api/materials/presets`).
 
 ## 4. Where things are (backend)
 
 | Area | File | Reusable symbols |
 |---|---|---|
-| Flask app, all routes | `server/app.py` (~1550 lines) | `HardwareController` (facade, sim tiers), `ComponentCounters` (ON-hours), `_CureFileStore`, `CloudSync`, `_load_json_file/_save_json_file` (atomic tmp+fsync+replace), `_hw_result`, `_valid_heat_temp/_valid_cool_temp/_valid_intensity`, `_on_device()`, `_db_on` |
+| Flask app, all routes + wiring | `server/app.py` (~900 lines) | routes, `run()`, IOBridge probe, `_hw_result`, `_valid_heat_temp/_valid_cool_temp/_valid_intensity`, `_on_device()`, `_db_on`, `_make_cloud_sync()`, atexit registrations |
+| Hardware facade + simulation | `server/hardware_controller.py` | `HardwareController` (tiers: IOBridge → simulation), `SIM_*` constants, `COOLING_MODE_PWMS` |
+| JSON persistence | `server/storage.py` | `DATA_DIR` (env `SCURE_DATA_DIR`), `load_json_file/save_json_file` (atomic tmp+fsync+replace), `load_user_materials/save_user_materials`, `CureFileStore`, `ComponentCounters(path, get_state)` |
+| Cloud agent | `server/cloud_sync.py` | `CloudSync(data_dir, get_state, counters, get_programs, put_programs, get_prints, put_prints, list_cures)` |
 | API ↔ hardware bridge | `server/io_bridge.py` | `IOBridge` (heat/dry/cure/cool/nitrogen/bofa/stop_all/door_abort/shutdown, fan-group mapping `led_cooling`/`chamber_intake`/`chamber_heating`), `StatusLeds` (RGB status thread = door watchdog 10 s + internet probe) |
 | PostgreSQL layer (optional) | `server/db.py`, `server/db/schema.sql`, `seed_*.sql` | `available()`, `get_materials`, `replace_user_materials`, `get_print_history`, `replace_print_history`, `get_cure_history`, `start_cure_run`, `finish_cure_run`, `record_telemetry`, `save_report`, `get_report` |
 | USB update | `server/updater.py` | `find_usb_mount` (also used by CSV/report/log export), `find_update_package`, `verify_signature` (RSA-SHA256 vs `/opt/scure/keys/scure-update.pub`), `extract_and_verify`, `install_update`, `run_update` |
@@ -70,7 +77,7 @@ Known duplications (candidates to consolidate *only when a task touches them*): 
 | Structured log | `io_controller/system_log.py` | `log`, `recent(n)`, `export(dest)`, `clear()` |
 | Tuning (no code change needed) | `io_controller/components.json` | re-read on each activation |
 | Cloud portal | `cloud/portal.py` | Flask+SQLite, `POST /api/agent/sync` (machine key), data-only commands |
-| Legacy / standalone (avoid extending) | `io_controller/{pca9685,tca6424a,analog_read,temp_monitor,servo,fan_control,gpio_control,gpio_manager,pinctrl,toggle_gpio,config}.py`, Tk dashboards, `server/hardware/*.cpp` | duplicates of the unified drivers; prefer `io_controller.py` |
+| Parked (not active) | `Not_Relevant/` | legacy standalone drivers/dashboards, C++ driver, bench-analysis scripts, prototypes — see `Not_Relevant/README.md`; never import from there |
 
 **API surface (all JSON, error shape `{ok, code, message}`)** — state `GET /api/state`; cure steps `POST /api/cure/{heat,dry,cure-405,cure-450,cool,nitrogen,stop}`; manual `POST /api/chamber/temperature|stop`, `/api/fans/<fan>`, `/api/damper/open|close`, `/api/uv`, `/api/bofa`, `/api/rgb`, `/api/door/open`, `/api/door-abort/ack`; diagnostics `POST /api/diagnostics/fan-test|led-test`; data `GET/POST /api/materials/user`, `GET /api/materials/presets`, `GET/POST /api/print-history`, `GET /api/cure-history`, `POST /api/cure-runs/<id>/{start,telemetry,finish,report,phase}`, `GET /api/phase-timings`; system `GET /api/system/version`, `POST /api/system/{reboot,shutdown,datetime,update,export-logs,export-csv,export-report}`, `GET /api/system/update/{manifest,package}`; network `GET /api/network/status`, `POST /api/network/{static,diagnostics}`; cloud `POST /api/cloud/config`. Full list with semantics: read `server/app.py` route decorators.
 
@@ -93,15 +100,15 @@ Known duplications (candidates to consolidate *only when a task touches them*): 
 - **Backend:** PEP 8, no type hints (docstrings carry contracts), hardware ops return `(ok, reason)` tuples, HTTP returns `{ok, code, message}`; API JSON keys camelCase, Python/SQL snake_case (convert at bridge/db boundary); broad `except Exception:  # noqa: BLE001` only with a justification comment; daemon threads + `threading.Event`, `sys.lock` for the shared I²C bus; atomic file writes idiom; configuration over code (`components.json`, defaults dicts merged, `_`-prefixed keys are comments); **process modules own no hardware — act only through `SystemController` verified functions**; every actuator write is read back (`set_and_verify`).
 - **Logging:** `print('[TAG] ...')` to stdout/journald in server; `system_log.log()` in io_controller.
 
-## 7. Verification available (no unit-test suite exists)
+## 7. Verification available
 
-- Frontend: `npm run build` (= `tsc -b && vite build`, typecheck included) and `npm run lint` are the gates. No vitest/jest, no test files. Manual: `npm run dev` (simulation), `tools/open-app.mjs`, `tools/shoot.mjs` (screenshots).
-- Backend: `python -m py_compile server/app.py server/io_bridge.py io_controller/io_controller.py ...`; run `python server/app.py` off-Pi (simulation mode) and hit endpoints; `qa-tool/index.html` against `http://localhost:3001`; on-device CLIs `python3 io_controller/io_controller.py status|safe|...`, `temperature_control.py <target>`, `cooling_mode.py`; in-app diagnostics `/api/diagnostics/fan-test|led-test`.
+- Frontend: `npm run build` (= `tsc -b && vite build`, typecheck included), `npm run lint`, and `npm test` (vitest: `src/**/*.test.ts` — pure logic: limits, parseCsv/stepsToCsv) are the gates. Manual: `npm run dev` (simulation), `tools/open-app.mjs`, `tools/shoot.mjs` (screenshots).
+- Backend: `python -m pytest` (`server/tests/`, `io_controller/tests/` — Flask test client in simulation with `SCURE_DATA_DIR` temp dir, storage, pure io_controller functions); `python -m py_compile server/*.py io_controller/*.py`; run `python server/app.py` off-Pi (simulation mode) and hit endpoints; `qa-tool/index.html` against `http://localhost:3001`; on-device CLIs `python3 io_controller/io_controller.py status|safe|...`, `temperature_control.py <target>`, `cooling_mode.py`; in-app diagnostics `/api/diagnostics/fan-test|led-test`.
 - Design/single-file build: `npx vite build --config vite.config.singlefile.ts` → `design-handoff/_singlefile/`.
 
 ## 8. Repository state (important)
 
-- Git history (`ca4b3f4`, `51e3f9f`) is an unrelated Python/Tk prototype; **the entire current project is uncommitted** in the working tree. The real history lives in the sibling `sCure-A` repo. Make a proper first commit before feature work so BMAD's baseline/diff review has a baseline.
-- **Secrets present in the tree:** `keys/scure-update.key` (RSA-4096 update signing private key, untracked, NOT gitignored) and a live OAuth token in `.mcp.json`. Do not commit them; rotate the token.
+- `main` = baseline commit `4e75eb0` (import of the working software); earlier commits are an unrelated prototype. Refactor work is on `refactor/clean-architecture`.
+- **Secrets in the working tree (gitignored, never commit):** `keys/scure-update.key` (RSA-4096 update signing private key) and `.mcp.json` (contains a live OAuth token — rotate it).
 - Not committed by design: `server/data/`, `cloud/portal_config.json`, `cloud/data/`, `dist/`, `node_modules/`, `_bmad/render/`, `*.user.toml`.
 - Windows dev Python is 3.14 (`C:\Python314`); Pi uses system python3 with `--system-site-packages` venv; cloud container is 3.12.

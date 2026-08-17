@@ -18,7 +18,11 @@ Examples:
   python3 fan_control.py front 0            # stop the front (door) fan
   python3 fan_control.py off                # stop all four
 """
+import os
 import sys
+# Parked under Not_Relevant/ (2026-08 refactor): the live driver stays in
+# <repo>/io_controller/, so put it on sys.path before importing it.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'io_controller'))
 
 import io_controller as ioc
 
