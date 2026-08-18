@@ -72,7 +72,7 @@
 <body>
 <main>
 <header>
-  <div class="eyebrow">sCure Box · branch refactor/clean-architecture · commit 8453e5c</div>
+  <div class="eyebrow">sCure Box · branch refactor/clean-architecture</div>
   <h1>sCure Box Architecture</h1>
   <p class="lede">How the machine software is put together, verified against the code. Read top to bottom: the five layers, what lives in each, the two flows that matter most, the repository, and the evidence.</p>
   <div class="kv">
@@ -81,6 +81,7 @@
     <div><b>73</b><span>automated tests (23 vitest + 50 pytest)</span></div>
     <div><b>0</b><span>legacy / unused files left in the tree</span></div>
   </div>
+  <p class="lede" style="margin-top:14px"><b>What actually runs on the machine:</b> the built UI (one bundle from <code>src/</code>), <b>5</b> Python modules in <code>server/</code> (<code>app.py</code>, <code>hardware_controller.py</code>, <code>storage.py</code>, <code>cloud_sync.py</code>, <code>io_bridge.py</code>) and <b>4</b> in <code>io_controller/</code> (<code>io_controller.py</code>, <code>temperature_control.py</code>, <code>cooling_mode.py</code>, <code>system_log.py</code>) plus <code>components.json</code>. Everything else in the repo is optional (PostgreSQL, USB updater), development-only (tests, Windows launcher, tools) or documentation.</p>
 </header>
 
 <h2>1 · The five layers</h2>
@@ -101,12 +102,12 @@
     <g fill="currentColor" stroke="none" text-anchor="middle">
       <text x="105" y="88" font-size="16" font-weight="700">Kiosk UI</text>
       <text x="105" y="108" font-family="Consolas, monospace" font-size="12">src/</text>
-      <text x="105" y="128" font-size="12" opacity=".8">React 19 · 800×480 touch</text>
+      <text x="105" y="128" font-size="12" opacity=".8">React · 7 screens · 800×480</text>
       <text x="105" y="146" font-size="12" opacity=".8">Chromium kiosk on the Pi</text>
 
       <text x="330" y="88" font-size="16" font-weight="700">Flask API</text>
       <text x="330" y="108" font-family="Consolas, monospace" font-size="12">server/app.py :3001</text>
-      <text x="330" y="128" font-size="12" opacity=".8">48 routes · JSON storage</text>
+      <text x="330" y="128" font-size="12" opacity=".8">5 modules · 48 routes</text>
       <text x="330" y="146" font-size="12" opacity=".8">serves the built UI (dist/)</text>
 
       <text x="555" y="88" font-size="16" font-weight="700">IO Bridge</text>
@@ -116,7 +117,7 @@
 
       <text x="780" y="88" font-size="16" font-weight="700">Drivers + Safety</text>
       <text x="780" y="108" font-family="Consolas, monospace" font-size="12">io_controller/</text>
-      <text x="780" y="128" font-size="12" opacity=".8">verified I²C/GPIO writes</text>
+      <text x="780" y="128" font-size="12" opacity=".8">4 modules · verified I²C/GPIO</text>
       <text x="780" y="146" font-size="12" fill="var(--safety)">interlocks · heater pre-flight</text>
 
       <text x="1000" y="88" font-size="16" font-weight="700">Hardware</text>
@@ -158,7 +159,7 @@
 <p class="lede">The files you will actually open. <span class="new">NEW</span> marks files created by the refactor; <span class="safe">SAFETY</span> marks code that must not change without on-device testing.</p>
 <div class="layers">
   <section class="layer" style="--lc: var(--l-ui)">
-    <h3>Kiosk UI</h3><div class="path">src/ · 47 files</div>
+    <h3>Kiosk UI</h3><div class="path">src/ · 7 screens · 15 components</div>
     <ul>
       <li><b>services/hardware-api.ts</b><span>every HTTP call · the single <code>API_BASE</code></span></li>
       <li><b>context/HardwareContext.tsx</b><span>polls <code>/api/state</code> @1 s</span></li>
@@ -169,14 +170,15 @@
     </ul>
   </section>
   <section class="layer" style="--lc: var(--l-api)">
-    <h3>Flask API</h3><div class="path">server/ · 15 files</div>
+    <h3>Flask API</h3><div class="path">server/ · 5 runtime modules</div>
     <ul>
       <li><b>app.py</b><span>48 routes + wiring (902 lines)</span></li>
       <li><b>hardware_controller.py</b> <span class="new">NEW</span><span>IOBridge → simulation fallback</span></li>
       <li><b>storage.py</b> <span class="new">NEW</span><span><code>server/data/*.json</code>, atomic writes, counters</span></li>
       <li><b>cloud_sync.py</b> <span class="new">NEW</span><span>outbound sync to the cloud portal</span></li>
-      <li><b>updater.py</b> · <b>db.py</b><span>signed USB updates · optional PostgreSQL</span></li>
-      <li><b>tests/</b><span>36 pytest (simulation)</span></li>
+      <li><b>io_bridge.py</b><span>see next layer</span></li>
+      <li><b>optional:</b> updater.py · db.py + db/*.sql<span>USB updates · PostgreSQL only if DATABASE_URL is set</span></li>
+      <li><b>not on the machine:</b> desktop.py · tests/<span>Windows launcher · 36 pytest</span></li>
     </ul>
   </section>
   <section class="layer" style="--lc: var(--l-bridge)">
@@ -188,7 +190,7 @@
     </ul>
   </section>
   <section class="layer" style="--lc: var(--l-drv)">
-    <h3>Drivers + Safety</h3><div class="path">io_controller/ · 4 modules</div>
+    <h3>Drivers + Safety</h3><div class="path">io_controller/ · 4 runtime modules</div>
     <ul>
       <li><b>io_controller.py</b> <span class="safe">SAFETY</span><span><code>SystemController</code>: interlocks, heater pre-flight, <code>set_and_verify</code> read-back ×3</span></li>
       <li><b>temperature_control.py</b><span>PI + Δ-Σ heater loop @50 ms, fan run-on</span></li>
@@ -230,29 +232,29 @@
   <div class="step s"><b>POST /api/door-abort/ack</b><small>clears the fault</small></div>
 </div>
 
-<h2>4 · Repository (commit 8453e5c, 502 tracked files)</h2>
+<h2>4 · Repository</h2>
 <div class="grid2">
 <pre class="tree">sCure_01/
-├─ src/               47  React kiosk UI
+├─ src/                   React kiosk UI (7 screens, 15 components, 6 contexts)
 │  ├─ App.tsx  main.tsx  index.css
 │  ├─ components/ (15 + ui/)  context/ (6)  pages/ (7)
 │  ├─ services/hardware-api.ts         <span class="acc">API_BASE</span>
 │  ├─ lib/ <span class="acc">limits.ts</span> compliance.ts cure-report.ts utils.ts
 │  └─ data/demo-data.ts
-├─ server/            15  Flask API
+├─ server/                Flask API (5 runtime modules + optional db/updater + tests)
 │  ├─ app.py   <span class="acc">hardware_controller.py  storage.py  cloud_sync.py</span>
 │  ├─ io_bridge.py  updater.py  db.py  db/*.sql  desktop.py
 │  └─ tests/
-├─ io_controller/      9  drivers + safety
+├─ io_controller/         drivers + safety (4 runtime modules + tuning + tests)
 │  ├─ io_controller.py  temperature_control.py
 │  ├─ cooling_mode.py  system_log.py  components.json
 │  └─ tests/
-├─ cloud/              4  cloud portal (separate deploy)
-├─ scripts/            5  pi-setup / pi-start / pi-kiosk / scure.service / win-start.bat
-├─ tools/             13  build-update.sh, gen-sbom, screenshots, error editor
-├─ public/             9  config (errors, versions, system), materials, sbom
-├─ qa-tool/            1  browser QA harness
-├─ docs/              70  SRS, CSV guide, diagrams, this page
+├─ cloud/                 cloud portal (separate deploy)
+├─ scripts/               pi-setup / pi-start / pi-kiosk / scure.service / win-start.bat
+├─ tools/                 build-update.sh, gen-sbom, screenshots, error editor
+├─ public/                config (errors, versions, system), materials, sbom
+├─ qa-tool/               browser QA harness
+├─ docs/                  SRS, CSV guide, diagrams, this page
 ├─ design-handoff/        designer package (single-file UI)
 ├─ keys/scure-update.pub  (private key never committed)
 ├─ README.md  AGENTS.md  CLAUDE.md  VERSION (0.4.9)
